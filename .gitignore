@@ -1,0 +1,6 @@
+/target/
+*.uf2
+.DS_Store
+.env
+.env.*
+!.env.example
