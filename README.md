@@ -18,13 +18,26 @@ Rendered from the firmware at 2× scale with example telemetry. The loading GIF 
 | --- | --- | --- |
 | ![TIINY UNAVAILABLE with animated retry dots and connected Wi-Fi](docs/gallery/unavailable.gif) | ![WI-FI LOST with a crossed-out Wi-Fi icon](docs/gallery/wifi-lost.png) | ![SET UP WI-FI with a prompt to see the README](docs/gallery/setup.png) |
 
-## Configure Wi-Fi
+## Configuration
 
-Copy `.env.example` to `.env` in the repo root. Fill in your 2.4 GHz `WIFI_SSID` and `WIFI_PASSWORD`, the Tiiny Pocket’s LAN IPv4 address in `TIINY_IP`, and its TiinyOS API key in `TIINY_API_KEY`. Use one `KEY=value` per line. Rebuild after you change these values.
+Copy `.env.example` to `.env` in the repository root, then fill in your values.
 
-Enable Wi-Fi auto-join for your network in TiinyOS. After the Tiiny Pocket reboots and rejoins Wi-Fi at the address set in `TIINY_IP`, the dashboard resumes polling automatically.
+```dotenv
+# Your 2.4 GHz Wi-Fi network
+WIFI_SSID="Your Wi-Fi"
+WIFI_PASSWORD="Your Wi-Fi password"
 
-`.env` is ignored by Git. A configured firmware image contains the Wi-Fi password and API key, so keep that image private. The Pico polls the Tiiny over local HTTP every two seconds.
+# Your Tiiny Pocket’s LAN IPv4 address and TiinyOS API key
+TIINY_IP=192.168.1.100
+TIINY_API_KEY="Your TiinyOS API key"
+```
+
+- Rebuild and flash after changing `.env`. Git ignores `.env`, and the built firmware embeds its credentials, so keep configured firmware images private.
+- Enable Wi-Fi auto-join in TiinyOS. The dashboard resumes polling when the Tiiny rejoins at `TIINY_IP` after a reboot.
+
+## Reading the dashboard
+
+The Pico polls the Tiiny over local HTTP every two seconds.
 
 The `SOC` meter shows the CPU utilization reported by TiinyOS. SoC RAM uses the reported usable total. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
 
