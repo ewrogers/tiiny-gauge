@@ -16,13 +16,36 @@ Rendered from the firmware at 2× scale with example telemetry. The loading GIF 
 | --- | --- |
 | ![Loaded model and resource meters with rising idle Zs](docs/gallery/idle.gif) | ![Three hopping dots, elapsed timer, and live resource meters](docs/gallery/inference.gif) |
 
-| Tiiny unavailable | Wi-Fi lost | Setup required |
+| Tiiny unavailable | Wi-Fi reconnecting | Setup required |
 | --- | --- | --- |
-| ![TIINY UNAVAILABLE with animated retry dots and connected Wi-Fi](docs/gallery/unavailable.gif) | ![WI-FI LOST with a crossed-out Wi-Fi icon](docs/gallery/wifi-lost.png) | ![SET UP WI-FI with a prompt to see the README](docs/gallery/setup.png) |
+| ![TIINY UNAVAILABLE with animated retry dots and the Tiiny IP](docs/gallery/unavailable.gif) | ![WI-FI LOST with animated reconnecting dots and the Tiiny IP](docs/gallery/wifi-lost.gif) | ![SET UP WI-FI with a USB serial setup prompt](docs/gallery/setup.png) |
 
-## Configuration
+| Invalid API key | Access denied |
+| --- | --- |
+| ![INVALID API KEY with a USB setup prompt and the Tiiny IP](docs/gallery/invalid-key.png) | ![ACCESS DENIED with the Tiiny IP](docs/gallery/access-denied.png) |
 
-Copy `.env.example` to `.env` in the repository root, then fill in your values.
+## Provision over USB
+
+1. [Download and flash](#download-and-flash) the credential-free UF2 for your OLED, then leave the Pico connected to your computer with a USB data cable.
+2. Open the **Tiiny Gauge** serial port at 115200 baud with local echo off. It usually appears as `/dev/cu.usbmodem*` on macOS, `/dev/ttyACM*` on Linux, or a COM port on Windows.
+3. The menu shows the Gauge’s Wi-Fi network and current IP, the Tiiny IP, and whether an API key is set. Press Enter to refresh it if needed.
+
+   ```text
+   [1] Set WiFi Network
+   [2] Set Tiiny IP
+   [3] Set Tiiny API Key
+   [4] Save & Restart
+   [5] Discard Changes
+   ```
+
+4. Use **1–3** to enter your Wi-Fi settings, the Tiiny’s LAN IPv4 address, and its TiinyOS API key. The Pico echoes the SSID and IP, masks credentials, and supports Backspace.
+5. A ` *` marks each unsaved change. Choose **4** to save and reboot or **5** to revert your edits and clear the markers.
+
+The Pico saves credentials in its onboard flash across reboots. Anyone with physical access can read that flash. Enable Wi-Fi auto-join in TiinyOS so the dashboard can resume polling after the Tiiny reboots at the configured address.
+
+### Optional build-time configuration
+
+Default builds ignore `.env` and credential environment variables. To embed settings in a private build, create a local `.env` with the values below and build with `--features baked-config`. Saved USB settings take precedence.
 
 ```dotenv
 # Your 2.4 GHz Wi-Fi network
@@ -34,12 +57,13 @@ TIINY_IP=192.168.1.100
 TIINY_API_KEY="Your TiinyOS API key"
 ```
 
-- Rebuild and flash after changing `.env`. Git ignores `.env`, and the built firmware embeds its credentials, so keep configured firmware images private.
-- Enable Wi-Fi auto-join in TiinyOS. The dashboard resumes polling when the Tiiny rejoins at `TIINY_IP` after a reboot.
+Git ignores `.env`. Keep firmware built with `baked-config` private.
 
 ## Reading the dashboard
 
 The Pico polls the Tiiny over local HTTP every two seconds.
+
+The retry screens show the configured Tiiny IP. If the OLED says **INVALID API KEY**, check the key in TiinyOS and update it through USB serial. **ACCESS DENIED** means the server at that address refused access.
 
 The `SOC` meter shows the CPU utilization reported by TiinyOS. SoC RAM uses the reported usable total. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
 
@@ -82,7 +106,18 @@ With the screen facing you and its header at the top, pin 1 is on the right. On 
 | 6 | DC | GP20 (pin 26) |
 | 7 | CS | GP17 (pin 22) |
 
-## Build and flash
+## Download and flash
+
+Download the UF2 matching your display controller and wiring from [GitHub Releases](https://github.com/ewrogers/tiiny-gauge/releases/latest).
+
+| OLED controller | I²C download | SPI download |
+| --- | --- | --- |
+| SSD1306 | `tiiny-gauge-v1.0.0-ssd1306-i2c.uf2` | `tiiny-gauge-v1.0.0-ssd1306-spi.uf2` |
+| SH1106 | `tiiny-gauge-v1.0.0-sh1106-i2c.uf2` | `tiiny-gauge-v1.0.0-sh1106-spi.uf2` |
+
+Hold **BOOTSEL** while plugging the Pico W into USB. Copy the UF2 to **RPI-RP2**, then [provision over USB](#provision-over-usb).
+
+## Build from source
 
 With Rust installed through rustup, run these commands from the repository root.
 
@@ -103,4 +138,4 @@ cargo install elf2uf2-rs --locked
 elf2uf2-rs target/thumbv6m-none-eabi/release/tiiny-gauge target/tiiny-gauge.uf2
 ```
 
-Hold **BOOTSEL** while plugging the Pico W into USB. Then copy `target/tiiny-gauge.uf2` to **RPI-RP2** or run `picotool load -v -x target/tiiny-gauge.uf2`. The Pico reboots into the dashboard.
+Hold **BOOTSEL** while plugging the Pico W into USB. Then copy `target/tiiny-gauge.uf2` to **RPI-RP2** or run `picotool load -v -x target/tiiny-gauge.uf2`. On first boot, [provision over USB](#provision-over-usb).

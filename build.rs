@@ -6,6 +6,9 @@ fn main() -> io::Result<()> {
     fs::write(out_dir.join("memory.x"), include_bytes!("memory.x"))?;
     println!("cargo:rustc-link-search={}", out_dir.display());
     println!("cargo:rerun-if-changed=memory.x");
+    if env::var_os("CARGO_FEATURE_BAKED_CONFIG").is_none() {
+        return Ok(());
+    }
     println!("cargo:rerun-if-changed=.env");
     let local = match fs::read_to_string(".env") {
         Ok(contents) => contents,

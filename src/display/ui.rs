@@ -1,4 +1,4 @@
-use core::fmt::Write;
+use core::{fmt::Write, net::Ipv4Addr};
 use embassy_time::Instant;
 use serde_json_core::heapless::String;
 
@@ -16,10 +16,22 @@ impl Frame {
         };
         match status {
             Status::Live(sample) => frame.live(sample),
-            Status::Setup => frame.placeholder(false, "SET UP WI-FI", "SEE README"),
+            Status::Setup => {
+                frame.placeholder(false, "SET UP WI-FI", "USB SERIAL SETUP", false, None)
+            }
             Status::WifiConnecting => frame.connecting(),
-            Status::WifiLost => frame.placeholder(false, "WI-FI LOST", "RECONNECTING"),
-            Status::TiinyUnavailable => frame.placeholder(true, "TIINY UNAVAILABLE", "RETRYING"),
+            Status::WifiLost(ip) => {
+                frame.placeholder(false, "WI-FI LOST", "RECONNECTING", true, Some(ip))
+            }
+            Status::TiinyUnavailable(ip) => {
+                frame.placeholder(true, "TIINY UNAVAILABLE", "RETRYING", true, Some(ip))
+            }
+            Status::InvalidApiKey(ip) => {
+                frame.placeholder(true, "INVALID API KEY", "CHECK USB SETUP", false, Some(ip))
+            }
+            Status::AccessDenied(ip) => {
+                frame.placeholder(true, "ACCESS DENIED", "CHECK TIINY ACCESS", false, Some(ip))
+            }
         }
         frame
     }
@@ -127,7 +139,14 @@ impl Frame {
         self.memory(54, "NPU RAM", sample.npu_ram, "--/48G");
     }
 
-    fn placeholder(&mut self, connected: bool, title: &str, subtitle: &str) {
+    fn placeholder(
+        &mut self,
+        connected: bool,
+        title: &str,
+        subtitle: &str,
+        animate: bool,
+        ip: Option<Ipv4Addr>,
+    ) {
         self.text(4, 4, "TIINY POCKET");
         self.icon(103, 4, UNAVAILABLE, 7);
         self.icon(115, 3, WIFI, 9);
@@ -141,7 +160,7 @@ impl Frame {
         }
         self.rect(4, 15, 120, 1, true);
         self.center(30, title);
-        if connected {
+        if animate {
             // Reserve room for all three dots so the retry text stays in place.
             let x = (128 - (subtitle.len() + 3) * 6) / 2;
             self.text(x, 43, subtitle);
@@ -149,6 +168,11 @@ impl Frame {
             self.text(x + subtitle.len() * 6, 43, &"..."[..dots]);
         } else {
             self.center(43, subtitle);
+        }
+        if let Some(ip) = ip {
+            let mut address = String::<15>::new();
+            let _ = write!(address, "{ip}");
+            self.center(54, address.as_str());
         }
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "tiiny-gauge"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 publish = false
 description = "A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W."
@@ -22,6 +22,7 @@ embassy-futures = "0.1"
 embassy-net = { version = "0.9", features = ["dhcpv4", "dns", "medium-ethernet", "tcp"] }
 embassy-rp = { version = "0.10", features = ["critical-section-impl", "rp2040", "time-driver"] }
 embassy-time = "0.5"
+embassy-usb = { version = "0.6", default-features = false }
 embedded-hal-bus = { version = "0.3", optional = true, features = ["async"] }
 panic-halt = "1"
 portable-atomic = { version = "1", features = ["critical-section"] }
@@ -30,8 +31,10 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 serde-json-core = "0.6"
 ssd1306 = { version = "0.10", default-features = false, features = ["async"] }
 static_cell = "2"
+unicode-width = { version = "0.1.14", default-features = false }
 
 [features]
+baked-config = []
 oled-spi = ["dep:embedded-hal-bus"]
 oled-sh1106 = []
 

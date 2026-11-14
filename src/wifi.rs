@@ -86,11 +86,13 @@ pub(crate) async fn maintain(
     ssid: &str,
     password: &str,
 ) -> ! {
+    let options = if password.is_empty() {
+        JoinOptions::new_open()
+    } else {
+        JoinOptions::new(password.as_bytes())
+    };
     loop {
-        if control
-            .join(ssid, JoinOptions::new(password.as_bytes()))
-            .await
-            .is_ok()
+        if control.join(ssid, options.clone()).await.is_ok()
             && with_timeout(Duration::from_secs(15), stack.wait_config_up())
                 .await
                 .is_ok()

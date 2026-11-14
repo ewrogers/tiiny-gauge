@@ -37,8 +37,10 @@ pub(crate) struct Snapshot {
 pub(crate) enum Status {
     Setup,
     WifiConnecting,
-    WifiLost,
-    TiinyUnavailable,
+    WifiLost(Ipv4Addr),
+    TiinyUnavailable(Ipv4Addr),
+    InvalidApiKey(Ipv4Addr),
+    AccessDenied(Ipv4Addr),
     Live(Snapshot),
 }
 
@@ -237,29 +239,45 @@ impl NpuStatus {
 
 type TiinyClient<'a, 'net> = HttpClient<'a, TcpClient<'net, 1, 1024, 2048>, DnsSocket<'net>>;
 
+enum RequestError {
+    Unavailable,
+    Unauthorized,
+    Forbidden,
+}
+
 async fn get<T: DeserializeOwned>(
     client: &mut TiinyClient<'_, '_>,
     buffer: &mut [u8],
     url: &str,
     host: Option<&str>,
     headers: &[(&str, &str)],
-) -> Option<T> {
+) -> Result<T, RequestError> {
     let mut request = client
         .request(Method::GET, url)
         .await
-        .ok()?
+        .map_err(|_| RequestError::Unavailable)?
         .headers(headers);
     if let Some(host) = host {
         request = request.host(host);
     }
-    let response = request.send(buffer).await.ok()?;
-    if response.status.0 != 200 {
-        return None;
+    let response = request
+        .send(buffer)
+        .await
+        .map_err(|_| RequestError::Unavailable)?;
+    match response.status.0 {
+        200 => {}
+        401 => return Err(RequestError::Unauthorized),
+        403 => return Err(RequestError::Forbidden),
+        _ => return Err(RequestError::Unavailable),
     }
-    let data = response.body().read_to_end().await.ok()?;
+    let data = response
+        .body()
+        .read_to_end()
+        .await
+        .map_err(|_| RequestError::Unavailable)?;
     serde_json_core::from_slice(data)
-        .ok()
         .map(|(value, _)| value)
+        .map_err(|_| RequestError::Unavailable)
 }
 
 pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell<Status>) -> ! {
@@ -287,7 +305,7 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
     let mut ticks = Ticker::every(Duration::from_secs(2));
     loop {
         if !stack.is_config_up() {
-            state.set(Status::WifiLost);
+            state.set(Status::WifiLost(ip));
             stack.wait_config_up().await;
             ticks.reset();
         }
@@ -307,7 +325,7 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                 .running
                 .busy
                 .then(|| previous.unwrap_or_else(Instant::now));
-            Some(Snapshot {
+            Ok(Snapshot {
                 cpu: sys.cpu.total_percent,
                 npu: utilization,
                 soc_ram: Memory {
@@ -330,11 +348,11 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
         let deadline = Instant::now() + Duration::from_millis(1800);
         state.set(
             match with_timeout(Duration::from_millis(1800), cycle).await {
-                Ok(Some(mut snapshot)) => {
+                Ok(Ok(mut snapshot)) => {
                     let diagnostics =
                         get::<NpuStatus>(&mut client, &mut buffer, &npu_url, gateway, &headers);
                     let remaining = deadline.saturating_duration_since(Instant::now());
-                    if let Ok(Some(diagnostics)) =
+                    if let Ok(Ok(diagnostics)) =
                         with_timeout(remaining.min(Duration::from_millis(350)), diagnostics).await
                     {
                         if let Some(memory) = diagnostics.memory() {
@@ -349,8 +367,10 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                     }
                     Status::Live(snapshot)
                 }
-                _ if stack.is_config_up() => Status::TiinyUnavailable,
-                _ => Status::WifiLost,
+                _ if !stack.is_config_up() => Status::WifiLost(ip),
+                Ok(Err(RequestError::Unauthorized)) => Status::InvalidApiKey(ip),
+                Ok(Err(RequestError::Forbidden)) => Status::AccessDenied(ip),
+                _ => Status::TiinyUnavailable(ip),
             },
         );
         ticks.next().await;

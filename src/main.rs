@@ -1,18 +1,15 @@
 #![no_std]
 #![no_main]
 
-use core::{cell::Cell, future::pending, net::Ipv4Addr};
+use core::{cell::Cell, future::pending};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use panic_halt as _;
 
 mod display;
+mod setup;
 mod telemetry;
 mod wifi;
-
-mod config {
-    include!(concat!(env!("OUT_DIR"), "/local_config.rs"));
-}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -36,11 +33,18 @@ async fn main(spawner: Spawner) {
         (bus, Some(reset))
     };
     let state = Cell::new(telemetry::Status::Setup);
+    let mut storage = setup::Storage::new(board.FLASH);
+    let settings = storage.load().or_else(setup::baked);
+    let network_stack = Cell::new(None);
+    let serial = setup::run(
+        board.USB,
+        board.WATCHDOG,
+        storage,
+        settings.as_ref(),
+        &network_stack,
+    );
     let network = async {
-        if let Ok(ip) = config::TIINY_IP.parse::<Ipv4Addr>()
-            && !config::WIFI_SSID.is_empty()
-            && !config::TIINY_API_KEY.is_empty()
-        {
+        if let Some(settings) = &settings {
             state.set(telemetry::Status::WifiConnecting);
             let (stack, control) = wifi::start(
                 spawner,
@@ -52,14 +56,20 @@ async fn main(spawner: Spawner) {
                 board.PIN_29,
             )
             .await;
+            network_stack.set(Some(stack));
             join(
-                wifi::maintain(stack, control, config::WIFI_SSID, config::WIFI_PASSWORD),
-                telemetry::poll(stack, ip, config::TIINY_API_KEY, &state),
+                wifi::maintain(
+                    stack,
+                    control,
+                    settings.ssid.as_str(),
+                    settings.password.as_str(),
+                ),
+                telemetry::poll(stack, settings.ip, settings.key.as_str(), &state),
             )
             .await;
         } else {
             pending::<()>().await;
         }
     };
-    join(display::run(bus, reset, &state), network).await;
+    embassy_futures::join::join3(display::run(bus, reset, &state), network, serial).await;
 }
