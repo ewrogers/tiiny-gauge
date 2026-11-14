@@ -2,6 +2,8 @@
 
 A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. It shows the loaded model, NPU and SoC utilization, memory usage, and elapsed inference activity over Wi-Fi.
 
+<img src="docs/tiiny-gauge-inference.jpg" width="420" alt="Tiiny Gauge on a breadboard showing Qwen3-Coder-Next generating at 93% NPU utilization">
+
 ## OLED gallery
 
 Rendered from the firmware at 2× scale with example telemetry. The loading GIF condenses a model load into a short loop.
