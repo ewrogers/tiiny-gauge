@@ -158,9 +158,24 @@ async fn session(
                 send(serial, "Changes discarded.\r\n").await?;
                 Ok(())
             }
+            "6" => {
+                draft.clone_from(&original);
+                send(
+                    serial,
+                    "Setup closed. Close your serial terminal or type SETUP to reopen.\r\n",
+                )
+                .await?;
+                while !input
+                    .prompt(serial, "", Echo::Plain)
+                    .await?
+                    .trim()
+                    .eq_ignore_ascii_case("SETUP")
+                {}
+                Ok(())
+            }
             command if command.is_empty() || command.eq_ignore_ascii_case("SETUP") => Ok(()),
             _ => {
-                send(serial, "Choose 1 through 5.\r\n").await?;
+                send(serial, "Choose 1 through 6.\r\n").await?;
                 Ok(())
             }
         };
@@ -230,6 +245,7 @@ async fn show_menu(
         "[3] Set Tiiny API Key\r\n",
         "[4] Save & Restart\r\n",
         "[5] Discard Changes\r\n",
+        "[6] Exit\r\n",
     ));
     send(serial, menu.as_str()).await
 }

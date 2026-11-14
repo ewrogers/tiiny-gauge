@@ -36,12 +36,18 @@ Rendered from the firmware at 2× scale with example telemetry. The loading GIF 
    [3] Set Tiiny API Key
    [4] Save & Restart
    [5] Discard Changes
+   [6] Exit
    ```
 
 4. Use **1–3** to enter your Wi-Fi settings, the Tiiny’s LAN IPv4 address, and its TiinyOS API key. The Pico echoes the SSID and IP, masks credentials, and supports Backspace.
 5. A ` *` marks each unsaved change. Choose **4** to save and reboot or **5** to revert your edits and clear the markers.
+6. Choose **6** to close the setup menu and discard unsaved edits. The Gauge keeps its saved settings and continues running. Type `SETUP` and press Enter to reopen the menu in the same serial session.
 
 The Pico saves credentials in its onboard flash across reboots. Anyone with physical access can read that flash. Enable Wi-Fi auto-join in TiinyOS so the dashboard can resume polling after the Tiiny reboots at the configured address.
+
+### Close `screen` on macOS
+
+Press **Control+A**, release both keys, then press **Control+Backslash** and confirm with **y** if prompted. If the shortcut does nothing, open a second Terminal window, run `screen -ls`, and copy the full session ID for the Pico. Run `screen -S <session-id> -X quit` with that ID to close the session and release the serial port.
 
 ### Optional build-time configuration
 

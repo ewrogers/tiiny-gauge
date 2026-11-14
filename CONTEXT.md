@@ -6,7 +6,7 @@ Tiiny Gauge is a desk display for Tiiny Pocket. The first target is a Raspberry 
 
 Default UF2 builds omit credentials. USB CDC setup saves validated settings in the final two RP2040 flash sectors, reserved by `memory.x`. Writes alternate sectors and verify the new record before rebooting. Saved settings take precedence over the optional `baked-config` feature.
 
-The USB menu shows the Gauge’s live IPv4 address and keeps edits in memory until Save & Restart. Discard Changes restores the settings in use when the menu opened. Show API key presence and mask credential input.
+The USB menu shows the Gauge’s live IPv4 address and keeps edits in memory until Save & Restart. Discard Changes restores the settings in use when the menu opened. Exit discards edits and closes the menu while the Gauge continues running. Typing `SETUP` reopens the menu on the same serial connection. Show API key presence and mask credential input.
 
 Use a single Cargo binary crate at the repo root. Extract a second crate when there is a second consumer or a concrete need to build part of the code independently. First flash the boot screen to validate the board, power, and I²C. Then verify the read-only telemetry responses on the user's Tiiny firmware over the LAN before writing the Pico client.
 
