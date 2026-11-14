@@ -21,6 +21,8 @@ The ESP32-C3 release supports SH1106 I²C. The [ESP32-C3 wiring section](#esp32-
 
 Rendered from the firmware at 2× scale with example telemetry. The loading GIF condenses a model load into a short loop.
 
+The top-right Wi-Fi icon shows one bar for **Poor** (Tiiny unavailable below), two for **Good** (Idle), and three for **Excellent** (Inference). A slash marks disconnected Wi-Fi.
+
 | Connecting to Wi-Fi | Model loading |
 | --- | --- |
 | ![Wi-Fi waves expanding above CONNECTING TO WIFI](docs/gallery/connecting.gif) | ![Two-line LOADING MODEL label, live percentage, and descending arrow](docs/gallery/loading.gif) |
