@@ -122,8 +122,8 @@ Download the UF2 matching your display controller and wiring from [GitHub Releas
 
 | OLED controller | I²C download | SPI download |
 | --- | --- | --- |
-| SSD1306 | `tiiny-gauge-v1.0.0-ssd1306-i2c.uf2` | `tiiny-gauge-v1.0.0-ssd1306-spi.uf2` |
-| SH1106 | `tiiny-gauge-v1.0.0-sh1106-i2c.uf2` | `tiiny-gauge-v1.0.0-sh1106-spi.uf2` |
+| SSD1306 | `tiiny-gauge-v1.0.1-ssd1306-i2c.uf2` | `tiiny-gauge-v1.0.1-ssd1306-spi.uf2` |
+| SH1106 | `tiiny-gauge-v1.0.1-sh1106-i2c.uf2` | `tiiny-gauge-v1.0.1-sh1106-spi.uf2` |
 
 Hold **BOOTSEL** while plugging the Pico W into USB. Copy the UF2 to **RPI-RP2**, then [provision over USB](#provision-over-usb).
 

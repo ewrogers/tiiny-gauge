@@ -1,6 +1,6 @@
 [package]
 name = "tiiny-gauge"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 publish = false
 description = "A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W."
