@@ -2,6 +2,7 @@ use cyw43::{Aligned, JoinOptions, aligned_bytes};
 use cyw43_firmware::{CYW43_43439A0, CYW43_43439A0_CLM};
 use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
 use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
 use embassy_net::{Config, Runner, Stack, StackResources};
 use embassy_rp::{
     Peri, bind_interrupts,
@@ -11,6 +12,7 @@ use embassy_rp::{
     peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0},
     pio::{InterruptHandler, Pio},
 };
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer, with_timeout};
 use static_cell::StaticCell;
 
@@ -85,7 +87,9 @@ pub(crate) async fn maintain(
     mut control: cyw43::Control<'_>,
     ssid: &str,
     password: &str,
+    responses: &Signal<NoopRawMutex, ()>,
 ) -> ! {
+    const LED_GPIO: u8 = 0; // The Pico W LED is wired to the CYW43.
     let options = if password.is_empty() {
         JoinOptions::new_open()
     } else {
@@ -97,8 +101,14 @@ pub(crate) async fn maintain(
                 .await
                 .is_ok()
         {
-            stack.wait_config_down().await;
+            while let Either::Second(()) = select(stack.wait_config_down(), responses.wait()).await
+            {
+                control.gpio_set(LED_GPIO, true).await;
+                Timer::after_millis(120).await;
+                control.gpio_set(LED_GPIO, false).await;
+            }
         }
+        responses.reset();
         control.leave().await;
         Timer::after_secs(3).await;
     }

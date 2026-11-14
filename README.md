@@ -2,6 +2,8 @@
 
 A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. It shows the loaded model, NPU and SoC utilization, memory usage, and elapsed inference activity over Wi-Fi.
 
+The Blink Indicator defaults to **Off**. Enable it in USB setup to blink the Pico W’s onboard LED after each successful telemetry poll.
+
 <img src="docs/tiiny-gauge-inference.jpg" width="420" alt="Tiiny Gauge on a breadboard showing Qwen3-Coder-Next generating at 93% NPU utilization">
 
 ## OLED gallery
@@ -34,14 +36,16 @@ Rendered from the firmware at 2× scale with example telemetry. The loading GIF 
    [1] Set WiFi Network
    [2] Set Tiiny IP
    [3] Set Tiiny API Key
-   [4] Save & Restart
-   [5] Discard Changes
-   [6] Exit
+   [5] Toggle Blink Indicator
+
+   [8] Save & Restart
+   [9] Discard Changes
+   [0] Exit
    ```
 
 4. Use **1–3** to enter your Wi-Fi settings, the Tiiny’s LAN IPv4 address, and its TiinyOS API key. The Pico echoes the SSID and IP, masks credentials, and supports Backspace.
-5. A ` *` marks each unsaved change. Choose **4** to save and reboot or **5** to revert your edits and clear the markers.
-6. Choose **6** to close the setup menu and discard unsaved edits. The Gauge keeps its saved settings and continues running. Type `SETUP` and press Enter to reopen the menu in the same serial session.
+5. Use **5** to switch the Blink Indicator between **On** and **Off**. A ` *` marks each unsaved change. Choose **8** to save and reboot or **9** to revert your edits and clear the markers.
+6. Choose **0** to close the setup menu and discard unsaved edits. The Gauge keeps its saved settings and continues running. Type `SETUP` and press Enter to reopen the menu in the same serial session.
 
 The Pico saves credentials in its onboard flash across reboots. Anyone with physical access can read that flash. Enable Wi-Fi auto-join in TiinyOS so the dashboard can resume polling after the Tiiny reboots at the configured address.
 

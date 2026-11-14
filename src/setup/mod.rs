@@ -25,15 +25,23 @@ pub(crate) struct Settings {
     pub password: String<PASSWORD_MAX>,
     pub ip: Ipv4Addr,
     pub key: String<KEY_MAX>,
+    pub blink_indicator: bool,
 }
 
 impl Settings {
-    fn new(ssid: &str, password: &str, ip: Ipv4Addr, key: &str) -> Result<Self, InvalidField> {
+    fn new(
+        ssid: &str,
+        password: &str,
+        ip: Ipv4Addr,
+        key: &str,
+        blink_indicator: bool,
+    ) -> Result<Self, InvalidField> {
         Ok(Self {
             ssid: parse_ssid(ssid)?,
             password: parse_password(password)?,
             ip: validate_ip(ip)?,
             key: parse_key(key)?,
+            blink_indicator,
         })
     }
 }
@@ -81,6 +89,7 @@ pub(crate) fn baked() -> Option<Settings> {
             config::WIFI_PASSWORD,
             config::TIINY_IP.parse().ok()?,
             config::TIINY_API_KEY,
+            false,
         )
         .ok()
     }

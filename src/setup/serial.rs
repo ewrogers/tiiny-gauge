@@ -95,6 +95,7 @@ async fn session(
         password: String::new(),
         ip: Ipv4Addr::UNSPECIFIED,
         key: String::new(),
+        blink_indicator: false,
     });
     let original = draft.clone();
     loop {
@@ -138,7 +139,17 @@ async fn session(
                     .await?;
                 parse_key(&key).map(|key| draft.key = key)
             }
-            "4" => match Settings::new(&draft.ssid, &draft.password, draft.ip, &draft.key) {
+            "5" => {
+                draft.blink_indicator = !draft.blink_indicator;
+                Ok(())
+            }
+            "8" => match Settings::new(
+                &draft.ssid,
+                &draft.password,
+                draft.ip,
+                &draft.key,
+                draft.blink_indicator,
+            ) {
                 Err(field) => Err(field),
                 Ok(settings) => {
                     if storage.save(&settings).is_err() {
@@ -153,12 +164,12 @@ async fn session(
                     return Ok(());
                 }
             },
-            "5" => {
+            "9" => {
                 draft.clone_from(&original);
                 send(serial, "Changes discarded.\r\n").await?;
                 Ok(())
             }
-            "6" => {
+            "0" => {
                 draft.clone_from(&original);
                 send(
                     serial,
@@ -175,7 +186,7 @@ async fn session(
             }
             command if command.is_empty() || command.eq_ignore_ascii_case("SETUP") => Ok(()),
             _ => {
-                send(serial, "Choose 1 through 6.\r\n").await?;
+                send(serial, "Choose 1, 2, 3, 5, 8, 9, or 0.\r\n").await?;
                 Ok(())
             }
         };
@@ -213,6 +224,7 @@ async fn show_menu(
         draft.ssid.as_str()
     };
     let key = if draft.key.is_empty() { "Unset" } else { "Set" };
+    let blink = if draft.blink_indicator { "On" } else { "Off" };
     let mark = |changed| if changed { " *" } else { "" };
     let wifi_changed = draft.ssid != original.ssid || draft.password != original.password;
     let _ = write!(
@@ -235,17 +247,20 @@ async fn show_menu(
     }
     let _ = write!(
         menu,
-        "{}\r\nAPI KEY: {key}{}\r\n",
+        "{}\r\nAPI KEY: {key}{}\r\nBlink Indicator: {blink}{}\r\n",
         mark(draft.ip != original.ip),
         mark(draft.key != original.key),
+        mark(draft.blink_indicator != original.blink_indicator),
     );
     let _ = menu.push_str(concat!(
         "\r\n[1] Set WiFi Network\r\n",
         "[2] Set Tiiny IP\r\n",
         "[3] Set Tiiny API Key\r\n",
-        "[4] Save & Restart\r\n",
-        "[5] Discard Changes\r\n",
-        "[6] Exit\r\n",
+        "[5] Toggle Blink Indicator\r\n",
+        "\r\n",
+        "[8] Save & Restart\r\n",
+        "[9] Discard Changes\r\n",
+        "[0] Exit\r\n",
     ));
     send(serial, menu.as_str()).await
 }

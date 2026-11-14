@@ -4,6 +4,7 @@
 use core::{cell::Cell, future::pending};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
+use embassy_sync::signal::Signal;
 use panic_halt as _;
 
 mod display;
@@ -57,14 +58,22 @@ async fn main(spawner: Spawner) {
             )
             .await;
             network_stack.set(Some(stack));
+            let responses = Signal::new();
             join(
                 wifi::maintain(
                     stack,
                     control,
                     settings.ssid.as_str(),
                     settings.password.as_str(),
+                    &responses,
                 ),
-                telemetry::poll(stack, settings.ip, settings.key.as_str(), &state),
+                telemetry::poll(
+                    stack,
+                    settings.ip,
+                    settings.key.as_str(),
+                    &state,
+                    settings.blink_indicator.then_some(&responses),
+                ),
             )
             .await;
         } else {

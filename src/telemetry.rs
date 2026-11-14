@@ -4,6 +4,7 @@ use embassy_net::{
     dns::DnsSocket,
     tcp::client::{TcpClient, TcpClientState},
 };
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Duration, Instant, Ticker, with_timeout};
 use reqwless::{
     client::HttpClient,
@@ -280,7 +281,13 @@ async fn get<T: DeserializeOwned>(
         .map_err(|_| RequestError::Unavailable)
 }
 
-pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell<Status>) -> ! {
+pub(crate) async fn poll(
+    stack: Stack<'_>,
+    ip: Ipv4Addr,
+    key: &str,
+    state: &Cell<Status>,
+    responses: Option<&Signal<NoopRawMutex, ()>>,
+) -> ! {
     let mut auth = String::<512>::new();
     if write!(auth, "Bearer {key}").is_err() {
         state.set(Status::Setup);
@@ -364,6 +371,9 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                                 .first()
                                 .and_then(|device| device.util_percent);
                         }
+                    }
+                    if let Some(responses) = responses {
+                        responses.signal(());
                     }
                     Status::Live(snapshot)
                 }

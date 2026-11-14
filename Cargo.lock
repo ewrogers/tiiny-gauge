@@ -1954,6 +1954,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-rp",
+ "embassy-sync",
  "embassy-time",
  "embassy-usb",
  "embedded-hal-bus",

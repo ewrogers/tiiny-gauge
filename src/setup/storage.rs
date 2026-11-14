@@ -14,6 +14,11 @@ const FIRST_SLOT: usize = FLASH_SIZE - 2 * ERASE_SIZE;
 const HEADER: usize = 16;
 const RECORD_SIZE: usize = HEADER + SSID_MAX + PASSWORD_MAX + KEY_MAX + 4;
 const MAGIC: [u8; 4] = *b"TG01";
+// The top two bits are available because passwords are at most 63 bytes.
+// Recognize the test build's Off flag and treat unmarked records as Off.
+const BLINK_ON: u8 = 0x40;
+const BLINK_OFF: u8 = 0x80;
+const BLINK_MASK: u8 = BLINK_ON | BLINK_OFF;
 
 pub(crate) struct Storage {
     flash: Flash<'static, FLASH, Blocking, FLASH_SIZE>,
@@ -85,7 +90,12 @@ fn encode(settings: &Settings, generation: u32) -> [u8; RECORD_SIZE] {
     data[4..8].copy_from_slice(&generation.to_le_bytes());
     data[8..12].copy_from_slice(&settings.ip.octets());
     data[12] = settings.ssid.len() as u8;
-    data[13] = settings.password.len() as u8;
+    data[13] = settings.password.len() as u8
+        | if settings.blink_indicator {
+            BLINK_ON
+        } else {
+            0
+        };
     data[14..16].copy_from_slice(&(settings.key.len() as u16).to_le_bytes());
     let mut offset = HEADER;
     for field in [
@@ -111,13 +121,17 @@ fn decode(data: &[u8; RECORD_SIZE]) -> Option<(u32, Settings)> {
     let generation = u32::from_le_bytes(data[4..8].try_into().ok()?);
     let ip = Ipv4Addr::new(data[8], data[9], data[10], data[11]);
     let ssid_end = HEADER + usize::from(data[12]);
-    let password_end = ssid_end + usize::from(data[13]);
+    let blink_indicator = data[13] & BLINK_MASK == BLINK_ON;
+    let password_end = ssid_end + usize::from(data[13] & !BLINK_MASK);
     let key_end = password_end + usize::from(u16::from_le_bytes([data[14], data[15]]));
     let payload = &data[..RECORD_SIZE - 4];
     let ssid = core::str::from_utf8(payload.get(HEADER..ssid_end)?).ok()?;
     let password = core::str::from_utf8(payload.get(ssid_end..password_end)?).ok()?;
     let key = core::str::from_utf8(payload.get(password_end..key_end)?).ok()?;
-    Some((generation, Settings::new(ssid, password, ip, key).ok()?))
+    Some((
+        generation,
+        Settings::new(ssid, password, ip, key, blink_indicator).ok()?,
+    ))
 }
 
 fn crc32(bytes: &[u8]) -> u32 {
