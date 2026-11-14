@@ -45,17 +45,22 @@ impl Frame {
     fn live(&mut self, sample: Snapshot) {
         let now = Instant::now();
         let name = sample.models.name();
+        let loading_percent = sample
+            .loading_percent
+            .filter(|_| sample.loading && sample.busy_since.is_none());
+        let header_limit = if loading_percent.is_some() { 12 } else { 15 };
         let mut second = String::<24>::new();
         if name.is_empty() {
             if sample.loading {
-                self.text(4, 4, "LOADING MODEL");
+                self.text(4, 4, "LOADING");
+                let _ = second.push_str("MODEL");
             } else {
                 self.text(4, 4, "NO MODEL LOADED");
             }
         } else {
-            let cut = name.len().min(15);
+            let cut = name.len().min(header_limit);
             let split = name[..cut].rfind('-').filter(|&i| i >= 9);
-            let cut = if name.len() > 15 {
+            let cut = if name.len() > header_limit {
                 split.unwrap_or(cut)
             } else {
                 cut
@@ -99,6 +104,11 @@ impl Frame {
             let frame = (now.as_millis() / 500 % 3) as usize;
             self.icon(104, 3 + frame * 2, LOADING, 5);
             self.rect(103, 12, 7, 1, true);
+            if let Some(progress) = loading_percent {
+                let mut percent = String::<4>::new();
+                let _ = write!(percent, "{progress}%");
+                self.right(101, 5, percent.as_str());
+            }
         } else {
             let frame = (now.as_millis() / 250 % 8) as usize;
             let visible = match frame {

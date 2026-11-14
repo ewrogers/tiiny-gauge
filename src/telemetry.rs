@@ -29,6 +29,7 @@ pub(crate) struct Snapshot {
     pub npu_ram: Memory,
     pub models: Models,
     pub loading: bool,
+    pub loading_percent: Option<u8>,
     pub busy_since: Option<Instant>,
 }
 
@@ -121,14 +122,16 @@ fn has_pending<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Er
 struct Instances {
     #[serde(default, deserialize_with = "instance_activity")]
     running: InstanceActivity,
-    #[serde(default, deserialize_with = "has_pending")]
-    pending: bool,
+    #[serde(default, deserialize_with = "instance_activity")]
+    pending: InstanceActivity,
 }
 
 #[derive(Default)]
 struct InstanceActivity {
+    present: bool,
     busy: bool,
     loading: bool,
+    progress: Option<u8>,
 }
 
 fn instance_activity<'de, D: Deserializer<'de>>(
@@ -138,6 +141,7 @@ fn instance_activity<'de, D: Deserializer<'de>>(
     struct Instance<'a> {
         status: Option<&'a str>,
         active_request_count: Option<u32>,
+        progress: Option<f32>,
     }
     struct RunningInstances;
     impl<'de> Visitor<'de> for RunningInstances {
@@ -150,8 +154,17 @@ fn instance_activity<'de, D: Deserializer<'de>>(
         fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<InstanceActivity, A::Error> {
             let mut activity = InstanceActivity::default();
             while let Some(instance) = seq.next_element::<Instance<'de>>()? {
+                activity.present = true;
                 activity.busy |= instance.active_request_count.is_some_and(|count| count > 0);
-                activity.loading |= instance.status == Some("loading");
+                if instance.status == Some("loading") {
+                    activity.loading = true;
+                    if activity.progress.is_none() {
+                        activity.progress = instance
+                            .progress
+                            .filter(|progress| (0.0..=100.0).contains(progress))
+                            .map(|progress| progress as u8);
+                    }
+                }
             }
             Ok(activity)
         }
@@ -304,8 +317,13 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                 npu_ram: Memory::default(),
                 models: models.running,
                 loading: models.pending
-                    || models.instances.pending
+                    || models.instances.pending.present
                     || models.instances.running.loading,
+                loading_percent: models
+                    .instances
+                    .pending
+                    .progress
+                    .or(models.instances.running.progress),
                 busy_since,
             })
         };

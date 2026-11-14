@@ -10,7 +10,7 @@ Copy `.env.example` to `.env` in the repo root. Fill in your 2.4 GHz `WIFI_SSID`
 
 The `SOC` meter shows the CPU utilization reported by TiinyOS. SoC RAM uses the reported usable total. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
 
-A descending arrow means a model is loading. Three hopping dots indicate inference, with a timer that starts at the first poll with an active request. Rising Zs indicate idle.
+A descending arrow means a model is loading, with a percentage when TiinyOS supplies it. Three hopping dots indicate inference, with a timer that starts at the first poll with an active request. Rising Zs indicate idle.
 
 ## Wire the display
 
