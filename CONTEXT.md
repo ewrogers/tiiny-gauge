@@ -11,6 +11,6 @@ The Pico is intended to poll the Tiiny directly over the local network every two
 ## Display
 
 - Wrap long model names across two header lines. Reserve the right side for status icons and an elapsed timer.
-- Use an hourglass for busy, a small and large Z for idle, and an X for unavailable. Use RSS-style arcs for the Pico's Wi-Fi link with a diagonal slash when disconnected.
-- Show NPU utilization, CPU utilization, SoC RAM, and dNPU RAM as four distinct meters. When telemetry is unavailable, replace the meters with a centered message. Distinguish Tiiny timeouts from loss of Wi-Fi.
-- Count observed busy time from the first busy poll and update the timer once a second between polls. A full agent-task timer requires a start timestamp from the agent runner and may include gaps between inference calls.
+- Use an hourglass for busy, a rising dot and two Z shapes for idle, and an X for unavailable. Use RSS-style arcs for the Pico's Wi-Fi link with a diagonal slash when disconnected.
+- Show NPU utilization, CPU utilization, SoC RAM, and dNPU RAM as four distinct meters. Use `/api/v1/npu/status` for dNPU RAM when it reports hardware counters. When those counters are missing, show `--/48G` without a fill bar. The general system endpoint can return a fluctuating NPU memory total. When telemetry is unavailable, replace the meters with a centered message. Distinguish Tiiny timeouts from loss of Wi-Fi.
+- Estimate busy time from NPU utilization while a model is loaded. Start at 10% and return to idle below 5%. Update elapsed time on the display once a second. An agent runner would need to supply a start timestamp for the full task duration.

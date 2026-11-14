@@ -1,8 +1,14 @@
 # Tiiny Gauge
 
-A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. The planned dashboard shows the loaded model, NPU, CPU and RAM usage, and elapsed busy time over Wi-Fi.
+A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. It shows the loaded model, NPU, CPU and RAM usage, and estimated busy time over Wi-Fi.
 
-The first firmware displays **Tiiny Gauge** and **OLED ready** so you can verify the screen and wiring.
+## Configure Wi-Fi
+
+Copy `.env.example` to `.env` in the repo root. Fill in your 2.4 GHz `WIFI_SSID` and `WIFI_PASSWORD`, the Tiiny Pocket’s LAN IPv4 address in `TIINY_IP`, and its TiinyOS API key in `TIINY_API_KEY`. Use one `KEY=value` per line. Rebuild after you change these values.
+
+`.env` is ignored by Git. A configured firmware image contains the Wi-Fi password and API key, so keep that image private. The Pico polls the Tiiny over local HTTP every two seconds.
+
+SoC RAM uses the total TiinyOS reports as usable. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
 
 ## Wire the display
 
@@ -10,7 +16,11 @@ Use a 3.3 V-compatible 128×64 SSD1306 OLED. Connect by the labels on your displ
 
 ### I²C OLED
 
-The default firmware uses address `0x3C`.
+I²C uses address `0x3C` for both controllers. The default build targets SSD1306. If the dashboard is readable but has a thin strip of static along the right edge, try the SH1106 build. It applies the two-column offset that cleared the static on our test panel.
+
+```sh
+cargo build --release --locked --features oled-sh1106
+```
 
 ![Pico WH breadboard diagram with physical pin numbers, pin names, and four I²C OLED jumpers](docs/breadboard.png)
 
@@ -58,4 +68,4 @@ cargo install elf2uf2-rs --locked
 elf2uf2-rs target/thumbv6m-none-eabi/release/tiiny-gauge target/tiiny-gauge.uf2
 ```
 
-Hold **BOOTSEL** while plugging the Pico W into USB, then copy `target/tiiny-gauge.uf2` to the **RPI-RP2** drive. The board reboots and shows the boot screen.
+Hold **BOOTSEL** while plugging the Pico W into USB. Then copy `target/tiiny-gauge.uf2` to **RPI-RP2** or run `picotool load -v -x target/tiiny-gauge.uf2`. The Pico reboots into the dashboard.
