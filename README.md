@@ -22,6 +22,8 @@ Rendered from the firmware at 2× scale with example telemetry. The loading GIF 
 
 Copy `.env.example` to `.env` in the repo root. Fill in your 2.4 GHz `WIFI_SSID` and `WIFI_PASSWORD`, the Tiiny Pocket’s LAN IPv4 address in `TIINY_IP`, and its TiinyOS API key in `TIINY_API_KEY`. Use one `KEY=value` per line. Rebuild after you change these values.
 
+Enable Wi-Fi auto-join for your network in TiinyOS. After the Tiiny Pocket reboots and rejoins Wi-Fi at the address set in `TIINY_IP`, the dashboard resumes polling automatically.
+
 `.env` is ignored by Git. A configured firmware image contains the Wi-Fi password and API key, so keep that image private. The Pico polls the Tiiny over local HTTP every two seconds.
 
 The `SOC` meter shows the CPU utilization reported by TiinyOS. SoC RAM uses the reported usable total. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
