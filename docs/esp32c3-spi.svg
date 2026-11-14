@@ -196,5 +196,5 @@
 <circle cx="784" cy="263" r="6" fill="#b66126" stroke="#fff"/>
 <text x="784" y="282" font-family="Arial,sans-serif" font-size="12" fill="#fff" text-anchor="middle">CS</text>
 <text x="784" y="302" font-family="Arial,sans-serif" font-size="12" fill="#fff" text-anchor="middle">7</text>
-<text x="43" y="752" font-family="Arial,sans-serif" font-size="15" fill="#202831" text-anchor="start">SPI wiring reference · Firmware bring-up uses I²C. Match the OLED labels to your module.</text>
+<text x="43" y="752" font-family="Arial,sans-serif" font-size="15" fill="#202831" text-anchor="start">SH1106 firmware · Four-wire SPI. Match the OLED labels to your module.</text>
 </svg>

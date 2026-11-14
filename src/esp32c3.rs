@@ -1,4 +1,5 @@
 use core::{cell::Cell, panic::PanicInfo};
+#[cfg(not(feature = "oled-spi"))]
 use display_interface::{AsyncWriteOnlyDataCommand, DataFormat, DisplayError};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
@@ -7,16 +8,31 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Ticker, Timer, with_timeout};
 use esp_bootloader_esp_idf::partitions::{PARTITION_TABLE_MAX_LEN, read_partition_table};
 use esp_hal::{
-    Async, Blocking,
+    Async,
     gpio::Level,
-    i2c::master::{Config, I2c, SoftwareTimeout},
     interrupt::software::SoftwareInterruptControl,
     rmt::{Channel, PulseCode, Rmt, Tx, TxChannelConfig, TxChannelCreator},
     rng::Rng,
-    time::{Duration, Rate},
+    time::Rate,
     timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart},
 };
+
+#[cfg(feature = "oled-spi")]
+use embedded_hal_bus::spi::ExclusiveDevice;
+#[cfg(not(feature = "oled-spi"))]
+use esp_hal::{
+    Blocking,
+    i2c::master::{Config, I2c, SoftwareTimeout},
+    time::Duration,
+};
+#[cfg(feature = "oled-spi")]
+use esp_hal::{
+    gpio::{Output, OutputConfig},
+    spi::master::{Config as SpiConfig, Spi},
+};
+#[cfg(feature = "oled-spi")]
+use ssd1306::prelude::SPIInterface;
 
 use esp_radio::wifi::{self, AuthenticationMethod, Interface, WifiController, sta::StationConfig};
 use esp_storage::FlashStorage;
@@ -39,6 +55,7 @@ async fn main(spawner: Spawner) -> ! {
     let interrupts = SoftwareInterruptControl::new(board.SW_INTERRUPT);
     esp_rtos::start(timers.timer0, interrupts.software_interrupt0);
 
+    #[cfg(not(feature = "oled-spi"))]
     let i2c = I2c::new(
         board.I2C0,
         Config::default()
@@ -84,8 +101,39 @@ async fn main(spawner: Spawner) -> ! {
         }
         core::future::pending::<()>().await;
     };
+    #[cfg(not(feature = "oled-spi"))]
+    let screen = render(i2c, &state, &network.rssi);
+    #[cfg(feature = "oled-spi")]
+    let screen = {
+        let spi = Spi::new(
+            board.SPI2,
+            SpiConfig::default().with_frequency(Rate::from_mhz(4)),
+        )
+        .expect("4 MHz SPI clock")
+        .with_sck(board.GPIO6)
+        .with_mosi(board.GPIO7)
+        .into_async();
+        let cs = Output::new(board.GPIO10, Level::High, OutputConfig::default());
+        let dc = Output::new(board.GPIO5, Level::Low, OutputConfig::default());
+        let mut reset = Output::new(board.GPIO4, Level::Low, OutputConfig::default());
+        let device = match ExclusiveDevice::new(spi, cs, embassy_time::Delay) {
+            Ok(device) => device,
+            Err(never) => match never {},
+        };
+        display::run(
+            SPIInterface::new(device, dc),
+            async move || {
+                reset.set_low();
+                Timer::after_millis(10).await;
+                reset.set_high();
+                Timer::after_millis(1).await;
+            },
+            &state,
+            &network.rssi,
+        )
+    };
     embassy_futures::join::join3(
-        embassy_futures::join::join(render(i2c, &state, &network.rssi), indicator),
+        embassy_futures::join::join(screen, indicator),
         setup::run(
             serial,
             storage,
@@ -262,6 +310,7 @@ fn led_frame(grb: [u8; 3]) -> [PulseCode; 26] {
     frame
 }
 
+#[cfg(not(feature = "oled-spi"))]
 async fn render(
     mut i2c: I2c<'static, Blocking>,
     state: &Cell<telemetry::Status>,
@@ -282,11 +331,13 @@ async fn render(
     }
 }
 
+#[cfg(not(feature = "oled-spi"))]
 struct OledBus<'a> {
     i2c: &'a mut I2c<'static, Blocking>,
     address: u8,
 }
 
+#[cfg(not(feature = "oled-spi"))]
 impl OledBus<'_> {
     fn transfer(&mut self, control: u8, data: &[u8]) -> Result<(), DisplayError> {
         let mut packet = [0; 9];
@@ -302,6 +353,7 @@ impl OledBus<'_> {
     }
 }
 
+#[cfg(not(feature = "oled-spi"))]
 impl AsyncWriteOnlyDataCommand for OledBus<'_> {
     async fn send_commands(&mut self, data: DataFormat<'_>) -> Result<(), DisplayError> {
         let DataFormat::U8(data) = data else {

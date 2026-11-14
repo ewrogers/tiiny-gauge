@@ -10,14 +10,7 @@ mod telemetry;
 #[cfg(target_arch = "arm")]
 mod wifi;
 
-#[cfg(all(
-    target_arch = "riscv32",
-    feature = "esp32c3",
-    not(feature = "oled-spi")
-))]
+#[cfg(all(target_arch = "riscv32", feature = "esp32c3"))]
 mod esp32c3;
-#[cfg(all(
-    target_arch = "riscv32",
-    any(not(feature = "esp32c3"), feature = "oled-spi")
-))]
-compile_error!("ESP32-C3 display bring-up requires esp32c3 and uses I2C.");
+#[cfg(all(target_arch = "riscv32", not(feature = "esp32c3")))]
+compile_error!("ESP32-C3 firmware requires the esp32c3 feature.");

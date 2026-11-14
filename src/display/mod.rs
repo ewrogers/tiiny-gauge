@@ -1,6 +1,6 @@
 use core::cell::Cell;
 use display_interface::{AsyncWriteOnlyDataCommand, DataFormat, DisplayError};
-#[cfg(target_arch = "arm")]
+#[cfg(any(target_arch = "arm", feature = "oled-spi"))]
 use embassy_time::Timer;
 use embassy_time::{Duration, Ticker};
 
@@ -13,7 +13,7 @@ pub(crate) mod i2c;
 pub(crate) mod spi;
 mod ui;
 
-#[cfg(target_arch = "arm")]
+#[cfg(any(target_arch = "arm", feature = "oled-spi"))]
 pub(crate) async fn run(
     mut bus: impl AsyncWriteOnlyDataCommand,
     mut reset: impl AsyncFnMut(),

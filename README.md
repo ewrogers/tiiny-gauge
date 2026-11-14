@@ -13,15 +13,15 @@ Use a 3.3 V-compatible 128×64 monochrome OLED and a 2.4 GHz Wi-Fi network that 
 | Board | OLED and wiring | Release format |
 | --- | --- | --- |
 | Raspberry Pi Pico W | SSD1306 or SH1106 over [I²C](#i2c-oled) or [SPI](#spi-oled) | UF2 |
-| ESP32-C3-DevKitC-02 (4 MB, USB-to-UART bridge) | SH1106 over [I²C](#esp32-c3-devkitc-02) | Merged ESP32-C3 BIN |
+| ESP32-C3-DevKitC-02 (4 MB, USB-to-UART bridge) | SH1106 over [I²C or SPI](#esp32-c3-devkitc-02) | Merged ESP32-C3 BIN |
 
-The ESP32-C3 release supports SH1106 I²C. The [ESP32-C3 wiring section](#esp32-c3-devkitc-02) also includes an SPI pinout for reference. Attach a 2.4 GHz antenna if your board uses the WROOM-02U module.
+Attach a 2.4 GHz antenna if your board uses the WROOM-02U module.
 
 ## OLED gallery
 
 Rendered from the firmware at 2× scale with example telemetry. The loading GIF condenses a model load into a short loop.
 
-The top-right Wi-Fi icon shows one bar for **Poor** (Tiiny unavailable below), two for **Good** (Idle), and three for **Excellent** (Inference). A slash marks disconnected Wi-Fi.
+The top-right Wi-Fi icon fills one bar for **Poor** (Tiiny unavailable below), two for **Good** (Idle), and three for **Excellent** (Inference). The remaining bars stay hollow. A slash marks disconnected Wi-Fi.
 
 | Connecting to Wi-Fi | Model loading |
 | --- | --- |
@@ -133,7 +133,7 @@ With the screen facing you and its header at the top, pin 1 is on the right. On 
 
 ### ESP32-C3-DevKitC-02
 
-The ESP32-C3 build supports the 128×64 SH1106 over I²C at `0x3C` or `0x3D`. It uses the same dashboard and polls the Tiiny every two seconds. The DevKitC-02’s USB-to-UART bridge carries the setup menu over UART0. The SPI diagram is a wiring reference. [Espressif’s DevKitC-02 pinout](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitc-02/user_guide.html#header-block)
+The ESP32-C3 builds support the 128×64 SH1106 over I²C (address `0x3C` or `0x3D`) or four-wire SPI. It uses the same dashboard and polls the Tiiny every two seconds. The DevKitC-02’s USB-to-UART bridge carries the setup menu over UART0. [Espressif’s DevKitC-02 pinout](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c3/esp32-c3-devkitc-02/user_guide.html#header-block)
 
 ![ESP32-C3-DevKitC-02 to SH1106 I²C OLED wiring](docs/esp32c3-i2c.svg)
 
@@ -146,7 +146,7 @@ The ESP32-C3 build supports the 128×64 SH1106 over I²C at `0x3C` or `0x3D`. It
 
 Power the DevKitC-02 over USB and the OLED from 3V3. Match the signal labels on your OLED since I²C header order varies. Use pull-ups to 3V3 if the OLED board has none. For a bare WROOM-02U module, follow Espressif’s reference circuit and attach a 2.4 GHz antenna. The J1 and J3 numbers refer to DevKitC-02 headers. [WROOM-02/02U datasheet](https://documentation.espressif.com/esp32-c3-wroom-02_datasheet_en.html)
 
-![ESP32-C3-DevKitC-02 to SPI OLED wiring reference](docs/esp32c3-spi.svg)
+![ESP32-C3-DevKitC-02 to SPI OLED wiring](docs/esp32c3-spi.svg)
 
 | SPI OLED pin (pin 1 on the right) | DevKitC-02 header | WROOM-02/02U module pad |
 | --- | --- | --- |
@@ -166,6 +166,8 @@ cargo build --release --locked --target riscv32imc-unknown-none-elf --features e
 espflash flash --partition-table firmware/esp32c3-partitions.csv target/riscv32imc-unknown-none-elf/release/tiiny-gauge
 ```
 
+For SPI, build with `--features esp32c3,oled-spi` and use the same flash command.
+
 ## Download and flash
 
 Download the firmware for your board and display from [GitHub Releases](https://github.com/ewrogers/tiiny-gauge/releases/latest). The release builds ship without credentials.
@@ -179,9 +181,9 @@ Download the firmware for your board and display from [GitHub Releases](https://
 
 Hold **BOOTSEL** while plugging the Pico W into USB. Copy the UF2 to **RPI-RP2**, then [provision over USB](#provision-over-usb).
 
-### ESP32-C3 download
+### ESP32-C3 downloads
 
-Download `tiiny-gauge-v1.1.0-esp32c3-sh1106-i2c.bin`. It includes the bootloader, partition table, and application. Close any serial terminal and run the command below with `esptool` installed. Plug in just the ESP32-C3 or select its port with `--port`.
+Choose `tiiny-gauge-v1.1.0-esp32c3-sh1106-i2c.bin` for I²C or `tiiny-gauge-v1.1.0-esp32c3-sh1106-spi.bin` for SPI. Both include the bootloader, partition table, and application. Close any serial terminal and run the command below with `esptool` installed, substituting the SPI filename if needed. Plug in just the ESP32-C3 or select its port with `--port`.
 
 ```sh
 esptool --chip esp32c3 write-flash 0x0 tiiny-gauge-v1.1.0-esp32c3-sh1106-i2c.bin

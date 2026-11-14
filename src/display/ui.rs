@@ -169,15 +169,15 @@ impl Frame {
     fn wifi_icon(&mut self, wifi: WifiIcon) {
         let bars = match wifi {
             WifiIcon::Connected(Some(rssi)) => SignalStrength::from_rssi(rssi).bars(),
-            WifiIcon::Connected(None) => 0,
-            _ => 3,
+            WifiIcon::Connected(None) | WifiIcon::Disconnected => 0,
         };
-        for (index, height) in [3, 6, 9].into_iter().take(bars).enumerate() {
-            self.rect(115 + index * 4, 12 - height, 3, height, true);
-        }
-        if bars == 0 {
-            self.rect(115, 9, 3, 3, true);
-            self.pixel(116, 10, false);
+        for (index, height) in [3, 6, 9].into_iter().enumerate() {
+            let x = 115 + index * 4;
+            let y = 12 - height;
+            self.rect(x, y, 3, height, true);
+            if index >= bars {
+                self.rect(x + 1, y + 1, 1, height - 2, false);
+            }
         }
         if matches!(wifi, WifiIcon::Disconnected) {
             for offset in 0..11 {
