@@ -1,18 +1,12 @@
 use core::net::Ipv4Addr;
 
-use embassy_rp::{
-    Peri,
-    flash::{Blocking, ERASE_SIZE, Flash},
-    peripherals::FLASH,
-};
+use embedded_storage::nor_flash::NorFlash;
 
 use super::{KEY_MAX, PASSWORD_MAX, SSID_MAX, Settings};
 
-const FLASH_SIZE: usize = 2 * 1024 * 1024;
-// Matches the two sectors reserved by memory.x.
-const FIRST_SLOT: usize = FLASH_SIZE - 2 * ERASE_SIZE;
 const HEADER: usize = 16;
 const RECORD_SIZE: usize = HEADER + SSID_MAX + PASSWORD_MAX + KEY_MAX + 4;
+const PADDED_SIZE: usize = RECORD_SIZE.next_multiple_of(4);
 const MAGIC: [u8; 4] = *b"TG01";
 // The top two bits are available because passwords are at most 63 bytes.
 // Recognize the test build's Off flag and treat unmarked records as Off.
@@ -20,26 +14,34 @@ const BLINK_ON: u8 = 0x40;
 const BLINK_OFF: u8 = 0x80;
 const BLINK_MASK: u8 = BLINK_ON | BLINK_OFF;
 
-pub(crate) struct Storage {
-    flash: Flash<'static, FLASH, Blocking, FLASH_SIZE>,
+pub(crate) struct Storage<F> {
+    flash: F,
+    first_slot: Option<u32>,
     newest: Option<(usize, u32)>,
+    #[cfg(target_arch = "arm")]
     saved_this_boot: bool,
 }
 
-impl Storage {
-    pub(crate) fn new(flash: Peri<'static, FLASH>) -> Self {
+impl<F: NorFlash> Storage<F> {
+    pub(crate) fn new(flash: F, first_slot: Option<u32>) -> Self {
         Self {
-            flash: Flash::new_blocking(flash),
+            flash,
+            first_slot,
             newest: None,
+            #[cfg(target_arch = "arm")]
             saved_this_boot: false,
         }
     }
 
     pub(crate) fn load(&mut self) -> Option<Settings> {
+        let base = self.first_slot?;
         let mut latest = None;
         for index in 0..2 {
-            let mut record = [0; RECORD_SIZE];
-            if self.flash.blocking_read(slot(index), &mut record).is_ok()
+            let mut record = [0; PADDED_SIZE];
+            if self
+                .flash
+                .read(base + (index * F::ERASE_SIZE) as u32, &mut record)
+                .is_ok()
                 && let Some((generation, settings)) = decode(&record)
                 && latest.as_ref().is_none_or(|&(_, previous, _)| {
                     generation != previous && generation.wrapping_sub(previous) < (1 << 31)
@@ -57,35 +59,33 @@ impl Storage {
         let (index, generation) = self.newest.map_or((0, 0), |(index, generation)| {
             (1 - index, generation.wrapping_add(1))
         });
-        let offset = slot(index);
+        let offset = self.first_slot.ok_or(())? + (index * F::ERASE_SIZE) as u32;
         let record = encode(settings, generation);
         self.flash
-            .blocking_erase(offset, offset + ERASE_SIZE as u32)
+            .erase(offset, offset + F::ERASE_SIZE as u32)
             .map_err(|_| ())?;
-        self.flash.blocking_write(offset, &record).map_err(|_| ())?;
-        let mut verify = [0; RECORD_SIZE];
-        self.flash
-            .blocking_read(offset, &mut verify)
-            .map_err(|_| ())?;
+        self.flash.write(offset, &record).map_err(|_| ())?;
+        let mut verify = [0; PADDED_SIZE];
+        self.flash.read(offset, &mut verify).map_err(|_| ())?;
         if record != verify {
             return Err(());
         }
         self.newest = Some((index, generation));
-        self.saved_this_boot = true;
+        #[cfg(target_arch = "arm")]
+        {
+            self.saved_this_boot = true;
+        }
         Ok(())
     }
 
+    #[cfg(target_arch = "arm")]
     pub(super) fn saved_this_boot(&self) -> bool {
         self.saved_this_boot
     }
 }
 
-fn slot(index: usize) -> u32 {
-    (FIRST_SLOT + index * ERASE_SIZE) as u32
-}
-
-fn encode(settings: &Settings, generation: u32) -> [u8; RECORD_SIZE] {
-    let mut data = [0xff; RECORD_SIZE];
+fn encode(settings: &Settings, generation: u32) -> [u8; PADDED_SIZE] {
+    let mut data = [0xff; PADDED_SIZE];
     data[..4].copy_from_slice(&MAGIC);
     data[4..8].copy_from_slice(&generation.to_le_bytes());
     data[8..12].copy_from_slice(&settings.ip.octets());
@@ -107,14 +107,14 @@ fn encode(settings: &Settings, generation: u32) -> [u8; RECORD_SIZE] {
         offset += field.len();
     }
     let checksum = crc32(&data[..RECORD_SIZE - 4]);
-    data[RECORD_SIZE - 4..].copy_from_slice(&checksum.to_le_bytes());
+    data[RECORD_SIZE - 4..RECORD_SIZE].copy_from_slice(&checksum.to_le_bytes());
     data
 }
 
-fn decode(data: &[u8; RECORD_SIZE]) -> Option<(u32, Settings)> {
+fn decode(data: &[u8; PADDED_SIZE]) -> Option<(u32, Settings)> {
     if data[..4] != MAGIC
         || crc32(&data[..RECORD_SIZE - 4])
-            != u32::from_le_bytes(data[RECORD_SIZE - 4..].try_into().ok()?)
+            != u32::from_le_bytes(data[RECORD_SIZE - 4..RECORD_SIZE].try_into().ok()?)
     {
         return None;
     }

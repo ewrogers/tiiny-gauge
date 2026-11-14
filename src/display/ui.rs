@@ -3,35 +3,62 @@ use embassy_time::Instant;
 use serde_json_core::heapless::String;
 
 use super::font::glyph;
+use crate::signal_strength::SignalStrength;
 use crate::telemetry::{Memory, Snapshot, Status};
+
+#[derive(Clone, Copy)]
+enum WifiIcon {
+    Disconnected,
+    Connected(Option<i32>),
+}
 
 pub(super) struct Frame {
     pub(super) pages: [[u8; 128]; 8],
 }
 
 impl Frame {
-    pub(super) fn render(status: Status) -> Self {
+    pub(super) fn render(status: Status, rssi: Option<i32>) -> Self {
         let mut frame = Self {
             pages: [[0; 128]; 8],
         };
         match status {
-            Status::Live(sample) => frame.live(sample),
-            Status::Setup => {
-                frame.placeholder(false, "SET UP WI-FI", "USB SERIAL SETUP", false, None)
-            }
+            Status::Live(sample) => frame.live(sample, rssi),
+            Status::Setup => frame.placeholder(
+                WifiIcon::Disconnected,
+                "SET UP WI-FI",
+                "USB SERIAL SETUP",
+                false,
+                None,
+            ),
             Status::WifiConnecting => frame.connecting(),
-            Status::WifiLost(ip) => {
-                frame.placeholder(false, "WI-FI LOST", "RECONNECTING", true, Some(ip))
-            }
-            Status::TiinyUnavailable(ip) => {
-                frame.placeholder(true, "TIINY UNAVAILABLE", "RETRYING", true, Some(ip))
-            }
-            Status::InvalidApiKey(ip) => {
-                frame.placeholder(true, "INVALID API KEY", "CHECK USB SETUP", false, Some(ip))
-            }
-            Status::AccessDenied(ip) => {
-                frame.placeholder(true, "ACCESS DENIED", "CHECK TIINY ACCESS", false, Some(ip))
-            }
+            Status::WifiLost(ip) => frame.placeholder(
+                WifiIcon::Disconnected,
+                "WI-FI LOST",
+                "RECONNECTING",
+                true,
+                Some(ip),
+            ),
+            Status::TiinyUnavailable(ip) => frame.placeholder(
+                WifiIcon::Connected(rssi),
+                "TIINY UNAVAILABLE",
+                "RETRYING",
+                true,
+                Some(ip),
+            ),
+            Status::InvalidApiKey(ip) => frame.placeholder(
+                WifiIcon::Connected(rssi),
+                "INVALID API KEY",
+                "CHECK USB SETUP",
+                false,
+                Some(ip),
+            ),
+            Status::AccessDenied(ip) => frame.placeholder(
+                WifiIcon::Connected(rssi),
+                "ACCESS DENIED",
+                "CHECK TIINY ACCESS",
+                false,
+                Some(ip),
+            ),
         }
         frame
     }
@@ -54,7 +81,7 @@ impl Frame {
         self.center(47, "CONNECTING TO WIFI...");
     }
 
-    fn live(&mut self, sample: Snapshot) {
+    fn live(&mut self, sample: Snapshot, rssi: Option<i32>) {
         let now = Instant::now();
         let name = sample.models.name();
         let loading_percent = sample
@@ -89,7 +116,7 @@ impl Frame {
             }
         }
 
-        self.icon(115, 3, WIFI, 9);
+        self.wifi_icon(WifiIcon::Connected(rssi));
         if let Some(start) = sample.busy_since {
             let elapsed_time = now.saturating_duration_since(start);
             let raised = (elapsed_time.as_millis() / 250 % 3) as usize;
@@ -139,9 +166,32 @@ impl Frame {
         self.memory(54, "NPU RAM", sample.npu_ram, "--/48G");
     }
 
+    fn wifi_icon(&mut self, wifi: WifiIcon) {
+        let bars = match wifi {
+            WifiIcon::Connected(Some(rssi)) => SignalStrength::from_rssi(rssi).bars(),
+            WifiIcon::Connected(None) => 0,
+            _ => 3,
+        };
+        for (index, height) in [3, 6, 9].into_iter().take(bars).enumerate() {
+            self.rect(115 + index * 4, 12 - height, 3, height, true);
+        }
+        if bars == 0 {
+            self.rect(115, 9, 3, 3, true);
+            self.pixel(116, 10, false);
+        }
+        if matches!(wifi, WifiIcon::Disconnected) {
+            for offset in 0..11 {
+                self.rect(114 + offset, 11 - offset * 8 / 10, 3, 1, false);
+            }
+            for offset in 0..11 {
+                self.pixel(115 + offset, 11 - offset * 8 / 10, true);
+            }
+        }
+    }
+
     fn placeholder(
         &mut self,
-        connected: bool,
+        wifi: WifiIcon,
         title: &str,
         subtitle: &str,
         animate: bool,
@@ -149,15 +199,7 @@ impl Frame {
     ) {
         self.text(4, 4, "TIINY POCKET");
         self.icon(103, 4, UNAVAILABLE, 7);
-        self.icon(115, 3, WIFI, 9);
-        if !connected {
-            for offset in 0..9 {
-                self.rect(114 + offset, 11 - offset, 3, 1, false);
-            }
-            for offset in 0..9 {
-                self.pixel(115 + offset, 11 - offset, true);
-            }
-        }
+        self.wifi_icon(wifi);
         self.rect(4, 15, 120, 1, true);
         self.center(30, title);
         if animate {
@@ -300,4 +342,3 @@ const IDLE: &[u16] = &[
     0b10000000000000,
 ];
 const UNAVAILABLE: &[u16] = &[65, 34, 20, 8, 20, 34, 65];
-const WIFI: &[u16] = &[480, 24, 4, 450, 34, 17, 17, 393, 393];

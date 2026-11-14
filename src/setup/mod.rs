@@ -4,8 +4,15 @@ use serde_json_core::heapless::String;
 mod serial;
 mod storage;
 
-pub(crate) use serial::run;
+#[cfg(target_arch = "arm")]
+mod usb;
+#[cfg(target_arch = "arm")]
+pub(crate) use usb::run;
+#[cfg(target_arch = "riscv32")]
+mod uart;
 pub(crate) use storage::Storage;
+#[cfg(target_arch = "riscv32")]
+pub(crate) use uart::{WifiStatus, run};
 
 const SSID_MAX: usize = 32;
 const PASSWORD_MAX: usize = 63;

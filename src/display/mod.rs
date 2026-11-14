@@ -1,37 +1,36 @@
 use core::cell::Cell;
 use display_interface::{AsyncWriteOnlyDataCommand, DataFormat, DisplayError};
-use embassy_rp::gpio::Output;
-use embassy_time::{Duration, Ticker, Timer};
+#[cfg(target_arch = "arm")]
+use embassy_time::Timer;
+use embassy_time::{Duration, Ticker};
 
 use crate::telemetry::Status;
 
 mod font;
-#[cfg(not(feature = "oled-spi"))]
+#[cfg(all(target_arch = "arm", not(feature = "oled-spi")))]
 pub(crate) mod i2c;
-#[cfg(feature = "oled-spi")]
+#[cfg(all(target_arch = "arm", feature = "oled-spi"))]
 pub(crate) mod spi;
 mod ui;
 
+#[cfg(target_arch = "arm")]
 pub(crate) async fn run(
     mut bus: impl AsyncWriteOnlyDataCommand,
-    mut reset: Option<Output<'_>>,
+    mut reset: impl AsyncFnMut(),
     state: &Cell<Status>,
+    rssi: &Cell<Option<i32>>,
 ) -> ! {
     loop {
-        if let Some(reset) = &mut reset {
-            reset.set_low();
-            Timer::after_millis(10).await;
-            reset.set_high();
-            Timer::after_millis(1).await;
-        }
-        let _ = draw_dashboard(&mut bus, state).await;
+        reset().await;
+        let _ = draw_dashboard(&mut bus, state, rssi).await;
         Timer::after_secs(1).await;
     }
 }
 
-async fn draw_dashboard(
+pub(crate) async fn draw_dashboard(
     bus: &mut impl AsyncWriteOnlyDataCommand,
     state: &Cell<Status>,
+    rssi: &Cell<Option<i32>>,
 ) -> Result<(), DisplayError> {
     // Both controllers accept page writes. Their charge pump and column offset differ.
     #[cfg(feature = "oled-sh1106")]
@@ -52,7 +51,7 @@ async fn draw_dashboard(
     let mut last: Option<ui::Frame> = None;
     let mut ticker = Ticker::every(Duration::from_millis(250));
     loop {
-        let frame = ui::Frame::render(state.get());
+        let frame = ui::Frame::render(state.get(), rssi.get());
         for (index, page) in frame.pages.iter().enumerate() {
             if last.as_ref().is_some_and(|old| old.pages[index] == *page) {
                 continue;

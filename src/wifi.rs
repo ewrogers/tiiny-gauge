@@ -1,3 +1,4 @@
+use core::cell::Cell;
 use cyw43::{Aligned, JoinOptions, aligned_bytes};
 use cyw43_firmware::{CYW43_43439A0, CYW43_43439A0_CLM};
 use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
@@ -13,7 +14,7 @@ use embassy_rp::{
     pio::{InterruptHandler, Pio},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::{Duration, Timer, with_timeout};
+use embassy_time::{Duration, Ticker, Timer, with_timeout};
 use static_cell::StaticCell;
 
 #[cfg(feature = "oled-spi")]
@@ -88,6 +89,7 @@ pub(crate) async fn maintain(
     ssid: &str,
     password: &str,
     responses: &Signal<NoopRawMutex, ()>,
+    rssi: &Cell<Option<i32>>,
 ) -> ! {
     const LED_GPIO: u8 = 0; // The Pico W LED is wired to the CYW43.
     let options = if password.is_empty() {
@@ -101,13 +103,26 @@ pub(crate) async fn maintain(
                 .await
                 .is_ok()
         {
-            while let Either::Second(()) = select(stack.wait_config_down(), responses.wait()).await
-            {
-                control.gpio_set(LED_GPIO, true).await;
-                Timer::after_millis(120).await;
-                control.gpio_set(LED_GPIO, false).await;
+            rssi.set(Some(control.get_rssi().await));
+            let mut ticks = Ticker::every(Duration::from_secs(2));
+            loop {
+                match select(
+                    stack.wait_config_down(),
+                    select(ticks.next(), responses.wait()),
+                )
+                .await
+                {
+                    Either::First(()) => break,
+                    Either::Second(Either::First(())) => rssi.set(Some(control.get_rssi().await)),
+                    Either::Second(Either::Second(())) => {
+                        control.gpio_set(LED_GPIO, true).await;
+                        Timer::after_millis(120).await;
+                        control.gpio_set(LED_GPIO, false).await;
+                    }
+                }
             }
         }
+        rssi.set(None);
         responses.reset();
         control.leave().await;
         Timer::after_secs(3).await;

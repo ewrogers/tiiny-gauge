@@ -1,9 +1,9 @@
 [package]
 name = "tiiny-gauge"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2024"
 publish = false
-description = "A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W."
+description = "A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy."
 
 [[bin]]
 name = "tiiny-gauge"
@@ -12,21 +12,12 @@ test = false
 bench = false
 
 [dependencies]
-cortex-m-rt = "0.7"
-cyw43 = "0.7"
-cyw43-firmware = { version = "0.1", default-features = false, features = ["wifi"] }
-cyw43-pio = "0.10"
 display-interface = "0.5"
-embassy-executor = { version = "0.10", features = ["executor-thread", "platform-cortex-m"] }
 embassy-futures = "0.1"
 embassy-net = { version = "0.9", features = ["dhcpv4", "dns", "medium-ethernet", "tcp"] }
-embassy-rp = { version = "0.10", features = ["critical-section-impl", "rp2040", "time-driver"] }
 embassy-sync = "0.8"
 embassy-time = "0.5"
-embassy-usb = { version = "0.6", default-features = false }
-embedded-hal-bus = { version = "0.3", optional = true, features = ["async"] }
-panic-halt = "1"
-portable-atomic = { version = "1", features = ["critical-section"] }
+embedded-storage = "0.3"
 reqwless = { version = "0.14", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde-json-core = "0.6"
@@ -34,7 +25,30 @@ ssd1306 = { version = "0.10", default-features = false, features = ["async"] }
 static_cell = "2"
 unicode-width = { version = "0.1.14", default-features = false }
 
+[target.'cfg(target_arch = "arm")'.dependencies]
+cortex-m-rt = "0.7"
+cyw43 = "0.7"
+cyw43-firmware = { version = "0.1", default-features = false, features = ["wifi"] }
+cyw43-pio = "0.10"
+embassy-executor = { version = "0.10", features = ["executor-thread", "platform-cortex-m"] }
+embassy-rp = { version = "0.10", features = ["critical-section-impl", "rp2040", "time-driver"] }
+embassy-usb = { version = "0.6", default-features = false }
+embedded-hal-bus = { version = "0.3", optional = true, features = ["async"] }
+panic-halt = "1"
+portable-atomic = { version = "1", features = ["critical-section"] }
+
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embassy-executor = "0.10"
+esp-alloc = { version = "0.10", optional = true }
+esp-radio = { version = "0.18", features = ["esp32c3", "wifi"], optional = true }
+esp-storage = { version = "0.9", features = ["esp32c3"], optional = true }
+esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3"], optional = true }
+esp-hal = { version = "~1.1.1", features = ["esp32c3", "unstable"], optional = true }
+esp-rtos = { version = "0.3", features = ["embassy", "esp32c3", "esp-radio", "esp-alloc"], optional = true }
+
 [features]
+esp32c3 = ["dep:esp-alloc", "dep:esp-bootloader-esp-idf", "dep:esp-hal", "dep:esp-radio", "dep:esp-rtos", "dep:esp-storage", "oled-sh1106"]
 baked-config = []
 oled-spi = ["dep:embedded-hal-bus"]
 oled-sh1106 = []

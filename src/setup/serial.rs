@@ -1,95 +1,39 @@
-use core::{cell::Cell, fmt::Write, future::pending, net::Ipv4Addr};
+use core::{cell::Cell, fmt::Write, net::Ipv4Addr};
 
-use embassy_futures::{join::join, select::select};
 use embassy_net::Stack;
-use embassy_rp::{
-    Peri, bind_interrupts,
-    peripherals::{USB, WATCHDOG},
-    usb::{Driver, InterruptHandler},
-    watchdog::Watchdog,
-};
-use embassy_time::{Duration, Timer, with_timeout};
-use embassy_usb::{
-    Builder, Config,
-    class::cdc_acm::{CdcAcmClass, Receiver, Sender, State},
-    driver::EndpointError,
-};
+use embassy_time::{Duration, with_timeout};
+use embedded_storage::nor_flash::NorFlash;
 use serde_json_core::heapless::{String, Vec};
 use unicode_width::UnicodeWidthStr;
+
+use crate::signal_strength::SignalStrength;
 
 use super::{
     InvalidField, KEY_MAX, Settings, Storage, parse_key, parse_password, parse_ssid, validate_ip,
 };
 
-bind_interrupts!(struct Irqs {
-    USBCTRL_IRQ => InterruptHandler<USB>;
-});
+pub(super) const PACKET: usize = 64;
 
-const PACKET: usize = 64;
-struct Serial<'a> {
-    tx: Sender<'a, Driver<'a, USB>>,
-    rx: Receiver<'a, Driver<'a, USB>>,
+pub(super) trait Serial {
+    const SAVE_LABEL: &'static str;
+    const SAVE_MESSAGE: &'static str;
+    fn write_status(&self, _menu: &mut String<512>, _has_ip: bool) {}
+    async fn read(&mut self, data: &mut [u8; PACKET]) -> Result<usize, ()>;
+    async fn write(&mut self, data: &[u8]) -> Result<(), ()>;
 }
 
-pub(crate) async fn run(
-    usb: Peri<'static, USB>,
-    watchdog: Peri<'static, WATCHDOG>,
-    mut storage: Storage,
+pub(super) async fn session<S: Serial>(
+    serial: &mut S,
+    storage: &mut Storage<impl NorFlash>,
     current: Option<&Settings>,
     network_stack: &Cell<Option<Stack<'static>>>,
-) -> ! {
-    let mut config = Config::new(0x2e8a, 0x000a);
-    config.product = Some("Tiiny Gauge");
-    let mut descriptors = [0; 128];
-    let mut bos = [0; 64];
-    let mut control = [0; PACKET];
-    let mut state = State::new();
-    let mut builder = Builder::new(
-        Driver::new(usb, Irqs),
-        config,
-        &mut descriptors,
-        &mut bos,
-        &mut [],
-        &mut control,
-    );
-    let (tx, rx, line_control) =
-        CdcAcmClass::new(&mut builder, &mut state, PACKET as u16).split_with_control();
-    let mut serial = Serial { tx, rx };
-    let mut device = builder.build();
-    let mut watchdog = Watchdog::new(watchdog);
-    join(device.run(), async {
-        loop {
-            serial.rx.wait_connection().await;
-            while !line_control.dtr() {
-                line_control.control_changed().await;
-            }
-            let _ = select(
-                session(&mut serial, &mut storage, current, network_stack),
-                async {
-                    while line_control.dtr() {
-                        line_control.control_changed().await;
-                    }
-                },
-            )
-            .await;
-            if storage.saved_this_boot() {
-                Timer::after_millis(200).await;
-                watchdog.trigger_reset();
-                pending::<()>().await;
-            }
-        }
-    })
-    .await;
-    pending().await
-}
-
-async fn session(
-    serial: &mut Serial<'_>,
-    storage: &mut Storage,
-    current: Option<&Settings>,
-    network_stack: &Cell<Option<Stack<'static>>>,
-) -> Result<(), EndpointError> {
+    rssi: &Cell<Option<i32>>,
+    wait_for_setup: bool,
+) -> Result<Settings, ()> {
     let mut input = Input::new();
+    if wait_for_setup {
+        input.wait_for_setup(serial).await?;
+    }
     let mut draft = current.cloned().unwrap_or_else(|| Settings {
         ssid: String::new(),
         password: String::new(),
@@ -104,7 +48,7 @@ async fn session(
             .filter(Stack::is_link_up)
             .and_then(|stack| stack.config_v4())
             .map(|config| config.address.address());
-        show_menu(serial, &original, &draft, gauge_ip).await?;
+        show_menu(serial, &original, &draft, gauge_ip, rssi.get()).await?;
         let command = input.prompt(serial, "Choice: ", Echo::Plain).await?;
         let result = match command.trim() {
             "1" => {
@@ -139,7 +83,7 @@ async fn session(
                     .await?;
                 parse_key(&key).map(|key| draft.key = key)
             }
-            "5" => {
+            "4" => {
                 draft.blink_indicator = !draft.blink_indicator;
                 Ok(())
             }
@@ -156,12 +100,9 @@ async fn session(
                         send(serial, "Could not save settings.\r\n").await?;
                         continue;
                     }
-                    let _ = with_timeout(
-                        Duration::from_millis(200),
-                        send(serial, "Settings saved. Restarting...\r\n"),
-                    )
-                    .await;
-                    return Ok(());
+                    let _ = with_timeout(Duration::from_millis(200), send(serial, S::SAVE_MESSAGE))
+                        .await;
+                    return Ok(settings);
                 }
             },
             "9" => {
@@ -176,17 +117,12 @@ async fn session(
                     "Setup closed. Close your serial terminal or type SETUP to reopen.\r\n",
                 )
                 .await?;
-                while !input
-                    .prompt(serial, "", Echo::Plain)
-                    .await?
-                    .trim()
-                    .eq_ignore_ascii_case("SETUP")
-                {}
+                input.wait_for_setup(serial).await?;
                 Ok(())
             }
             command if command.is_empty() || command.eq_ignore_ascii_case("SETUP") => Ok(()),
             _ => {
-                send(serial, "Choose 1, 2, 3, 5, 8, 9, or 0.\r\n").await?;
+                send(serial, "Choose 1, 2, 3, 4, 8, 9, or 0.\r\n").await?;
                 Ok(())
             }
         };
@@ -206,12 +142,13 @@ async fn session(
     }
 }
 
-async fn show_menu(
-    serial: &mut Serial<'_>,
+async fn show_menu<S: Serial>(
+    serial: &mut S,
     original: &Settings,
     draft: &Settings,
     gauge_ip: Option<Ipv4Addr>,
-) -> Result<(), EndpointError> {
+    rssi: Option<i32>,
+) -> Result<(), ()> {
     let mut menu = String::<512>::new();
     let current_ssid = if original.ssid.is_empty() {
         "Unset"
@@ -236,6 +173,13 @@ async fn show_menu(
     } else {
         let _ = menu.push_str("Not connected");
     }
+    serial.write_status(&mut menu, gauge_ip.is_some());
+    if let Some(rssi) = rssi {
+        let quality = SignalStrength::from_rssi(rssi).label();
+        let _ = write!(menu, "\r\nWi-Fi Signal: {quality} ({rssi} dBm)");
+    } else {
+        let _ = menu.push_str("\r\nWi-Fi Signal: Unavailable");
+    }
     if wifi_changed {
         let _ = write!(menu, "\r\nPending Wi-Fi Network: {draft_ssid} *");
     }
@@ -256,18 +200,16 @@ async fn show_menu(
         "\r\n[1] Set WiFi Network\r\n",
         "[2] Set Tiiny IP\r\n",
         "[3] Set Tiiny API Key\r\n",
-        "[5] Toggle Blink Indicator\r\n",
-        "\r\n",
-        "[8] Save & Restart\r\n",
-        "[9] Discard Changes\r\n",
-        "[0] Exit\r\n",
+        "[4] Toggle Blink Indicator\r\n",
     ));
+    let _ = write!(menu, "\r\n[8] {}\r\n", S::SAVE_LABEL);
+    let _ = menu.push_str(concat!("[9] Discard Changes\r\n", "[0] Exit\r\n",));
     send(serial, menu.as_str()).await
 }
 
-async fn send(serial: &mut Serial<'_>, message: &str) -> Result<(), EndpointError> {
+async fn send(serial: &mut impl Serial, message: &str) -> Result<(), ()> {
     for chunk in message.as_bytes().chunks(PACKET - 1) {
-        serial.tx.write_packet(chunk).await?;
+        serial.write(chunk).await?;
     }
     Ok(())
 }
@@ -294,19 +236,29 @@ impl Input {
         }
     }
 
+    async fn wait_for_setup(&mut self, serial: &mut impl Serial) -> Result<(), ()> {
+        while !self
+            .prompt(serial, "", Echo::Plain)
+            .await?
+            .trim()
+            .eq_ignore_ascii_case("SETUP")
+        {}
+        Ok(())
+    }
+
     async fn prompt(
         &mut self,
-        serial: &mut Serial<'_>,
+        serial: &mut impl Serial,
         prompt: &str,
         echo: Echo,
-    ) -> Result<String<KEY_MAX>, EndpointError> {
+    ) -> Result<String<KEY_MAX>, ()> {
         loop {
             send(serial, prompt).await?;
             let mut line = Vec::<u8, KEY_MAX>::new();
             let mut overflow = 0usize;
             loop {
                 if self.position == self.length {
-                    self.length = serial.rx.read_packet(&mut self.packet).await?;
+                    self.length = serial.read(&mut self.packet).await?;
                     self.position = 0;
                     if self.length == 0 {
                         continue;
