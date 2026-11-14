@@ -141,7 +141,15 @@ impl Frame {
         }
         self.rect(4, 15, 120, 1, true);
         self.center(30, title);
-        self.center(43, subtitle);
+        if connected {
+            // Reserve room for all three dots so the retry text stays in place.
+            let x = (128 - (subtitle.len() + 3) * 6) / 2;
+            self.text(x, 43, subtitle);
+            let dots = (Instant::now().as_millis() / 250 % 4) as usize;
+            self.text(x + subtitle.len() * 6, 43, &"..."[..dots]);
+        } else {
+            self.center(43, subtitle);
+        }
     }
 
     fn percentage(&mut self, y: usize, label: &str, load: Option<f32>) {
