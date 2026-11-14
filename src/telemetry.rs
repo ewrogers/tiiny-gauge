@@ -28,12 +28,14 @@ pub(crate) struct Snapshot {
     pub soc_ram: Memory,
     pub npu_ram: Memory,
     pub models: Models,
+    pub loading: bool,
     pub busy_since: Option<Instant>,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) enum Status {
     Setup,
+    WifiConnecting,
     WifiLost,
     TiinyUnavailable,
     Live(Snapshot),
@@ -91,6 +93,70 @@ impl<'de> Deserialize<'de> for Models {
 #[derive(Deserialize)]
 struct RunningModels {
     running: Models,
+    #[serde(default, deserialize_with = "has_pending")]
+    pending: bool,
+    #[serde(default)]
+    instances: Instances,
+}
+
+fn has_pending<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    struct Pending;
+    impl<'de> Visitor<'de> for Pending {
+        type Value = bool;
+
+        fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.write_str("a list of pending models")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<bool, A::Error> {
+            let any = seq.next_element::<IgnoredAny>()?.is_some();
+            while seq.next_element::<IgnoredAny>()?.is_some() {}
+            Ok(any)
+        }
+    }
+    deserializer.deserialize_seq(Pending)
+}
+
+#[derive(Default, Deserialize)]
+struct Instances {
+    #[serde(default, deserialize_with = "instance_activity")]
+    running: InstanceActivity,
+    #[serde(default, deserialize_with = "has_pending")]
+    pending: bool,
+}
+
+#[derive(Default)]
+struct InstanceActivity {
+    busy: bool,
+    loading: bool,
+}
+
+fn instance_activity<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<InstanceActivity, D::Error> {
+    #[derive(Deserialize)]
+    struct Instance<'a> {
+        status: Option<&'a str>,
+        active_request_count: Option<u32>,
+    }
+    struct RunningInstances;
+    impl<'de> Visitor<'de> for RunningInstances {
+        type Value = InstanceActivity;
+
+        fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.write_str("a list of model instances")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<InstanceActivity, A::Error> {
+            let mut activity = InstanceActivity::default();
+            while let Some(instance) = seq.next_element::<Instance<'de>>()? {
+                activity.busy |= instance.active_request_count.is_some_and(|count| count > 0);
+                activity.loading |= instance.status == Some("loading");
+            }
+            Ok(activity)
+        }
+    }
+    deserializer.deserialize_seq(RunningInstances)
 }
 
 #[derive(Default, Deserialize)]
@@ -121,8 +187,9 @@ struct SystemStatus {
 
 #[derive(Deserialize)]
 struct NpuDevice {
-    mem_used_mb: Option<u64>,
-    mem_total_mb: Option<u64>,
+    mem_used_mb: Option<f64>,
+    mem_total_mb: Option<f64>,
+    util_percent: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -139,12 +206,18 @@ impl NpuStatus {
         let device = self.devices.first()?;
         let used = device.mem_used_mb?;
         let total = device.mem_total_mb?;
-        if total == 0 || used > total {
+        if !used.is_finite()
+            || !total.is_finite()
+            || used < 0.0
+            || total <= 0.0
+            || used > total
+            || total >= (u64::MAX as f64 / 1_048_576.0)
+        {
             return None;
         }
         Some(Memory {
-            used: Some(used.checked_mul(1_048_576)?),
-            total: Some(total.checked_mul(1_048_576)?),
+            used: Some((used * 1_048_576.0) as u64),
+            total: Some((total * 1_048_576.0) as u64),
         })
     }
 }
@@ -195,6 +268,9 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
     let dns = DnsSocket::new(stack);
     let mut client = HttpClient::new(&tcp, &dns);
     let mut buffer = [0; 8192];
+    if matches!(state.get(), Status::WifiConnecting) {
+        let _ = with_timeout(Duration::from_secs(15), stack.wait_config_up()).await;
+    }
     let mut ticks = Ticker::every(Duration::from_secs(2));
     loop {
         if !stack.is_config_up() {
@@ -213,10 +289,11 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                 }
                 _ => None,
             };
-            let threshold = if previous.is_some() { 5.0 } else { 10.0 };
-            let busy_since = (models.running.count > 0
-                && utilization.is_some_and(|load| load >= threshold))
-            .then(|| previous.unwrap_or_else(Instant::now));
+            let busy_since = models
+                .instances
+                .running
+                .busy
+                .then(|| previous.unwrap_or_else(Instant::now));
             Some(Snapshot {
                 cpu: sys.cpu.total_percent,
                 npu: utilization,
@@ -226,6 +303,9 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                 },
                 npu_ram: Memory::default(),
                 models: models.running,
+                loading: models.pending
+                    || models.instances.pending
+                    || models.instances.running.loading,
                 busy_since,
             })
         };
@@ -238,9 +318,16 @@ pub(crate) async fn poll(stack: Stack<'_>, ip: Ipv4Addr, key: &str, state: &Cell
                     let remaining = deadline.saturating_duration_since(Instant::now());
                     if let Ok(Some(diagnostics)) =
                         with_timeout(remaining.min(Duration::from_millis(350)), diagnostics).await
-                        && let Some(memory) = diagnostics.memory()
                     {
-                        snapshot.npu_ram = memory;
+                        if let Some(memory) = diagnostics.memory() {
+                            snapshot.npu_ram = memory;
+                        }
+                        if diagnostics.hm_smi_available {
+                            snapshot.npu = diagnostics
+                                .devices
+                                .first()
+                                .and_then(|device| device.util_percent);
+                        }
                     }
                     Status::Live(snapshot)
                 }

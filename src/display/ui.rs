@@ -17,17 +17,41 @@ impl Frame {
         match status {
             Status::Live(sample) => frame.live(sample),
             Status::Setup => frame.placeholder(false, "SET UP WI-FI", "SEE README"),
+            Status::WifiConnecting => frame.connecting(),
             Status::WifiLost => frame.placeholder(false, "WI-FI LOST", "RECONNECTING"),
             Status::TiinyUnavailable => frame.placeholder(true, "TIINY UNAVAILABLE", "RETRYING"),
         }
         frame
     }
 
+    fn connecting(&mut self) {
+        let waves = (Instant::now().as_millis() / 250 % 5).min(3) as usize;
+        for (inner, outer) in [(7, 10), (14, 17), (21, 24)].into_iter().take(waves) {
+            let band = inner * inner..outer * outer;
+            for up in 1..outer {
+                for across in 0..=up {
+                    if band.contains(&(up * up + across * across)) {
+                        self.pixel(64 - across, 36 - up, true);
+                        self.pixel(64 + across, 36 - up, true);
+                    }
+                }
+            }
+        }
+        self.rect(62, 35, 5, 3, true);
+        self.rect(63, 34, 3, 5, true);
+        self.center(47, "CONNECTING TO WIFI...");
+    }
+
     fn live(&mut self, sample: Snapshot) {
+        let now = Instant::now();
         let name = sample.models.name();
         let mut second = String::<24>::new();
         if name.is_empty() {
-            self.text(4, 4, "NO MODEL LOADED");
+            if sample.loading {
+                self.text(4, 4, "LOADING MODEL");
+            } else {
+                self.text(4, 4, "NO MODEL LOADED");
+            }
         } else {
             let cut = name.len().min(15);
             let split = name[..cut].rfind('-').filter(|&i| i >= 9);
@@ -50,11 +74,13 @@ impl Frame {
 
         self.icon(115, 3, WIFI, 9);
         if let Some(start) = sample.busy_since {
-            self.icon(103, 4, HOURGLASS, 7);
-            let seconds = Instant::now()
-                .saturating_duration_since(start)
-                .as_secs()
-                .min(359_999);
+            let elapsed_time = now.saturating_duration_since(start);
+            let raised = (elapsed_time.as_millis() / 250 % 3) as usize;
+            for dot in 0..3 {
+                let y = if dot == raised { 4 } else { 7 };
+                self.rect(100 + dot * 4, y, 3, 3, true);
+            }
+            let seconds = elapsed_time.as_secs().min(359_999);
             let mut elapsed = String::<8>::new();
             let hours = seconds / 3600;
             let minutes = seconds / 60 % 60;
@@ -69,13 +95,24 @@ impl Frame {
                 let _ = second.push_str("...");
             }
             self.right(124, 13, elapsed.as_str());
+        } else if sample.loading {
+            let frame = (now.as_millis() / 500 % 3) as usize;
+            self.icon(104, 3 + frame * 2, LOADING, 5);
+            self.rect(103, 12, 7, 1, true);
         } else {
-            self.icon(98, 3, IDLE, 14);
+            let frame = (now.as_millis() / 250 % 8) as usize;
+            let visible = match frame {
+                1 => IDLE_DOT,
+                2 => IDLE_SMALL_Z,
+                3..=6 => IDLE,
+                _ => &[],
+            };
+            self.icon(98, 3, visible, 14);
         }
         self.text(4, 13, second.as_str());
         self.rect(4, 23, 120, 1, true);
         self.percentage(27, "NPU", sample.npu);
-        self.percentage(36, "CPU", sample.cpu);
+        self.percentage(36, "SOC", sample.cpu);
         self.memory(45, "SOC RAM", sample.soc_ram, "--");
         self.memory(54, "NPU RAM", sample.npu_ram, "--/48G");
     }
@@ -196,7 +233,19 @@ impl Frame {
     }
 }
 
-const HOURGLASS: &[u16] = &[127, 34, 20, 8, 20, 62, 127];
+const LOADING: &[u16] = &[0b00100, 0b00100, 0b10101, 0b01110, 0b00100];
+const IDLE_DOT: &[u16] = &[0, 0, 0, 0, 0, 0, 0, 0, 0b10000000000000];
+const IDLE_SMALL_Z: &[u16] = &[
+    0,
+    0,
+    0,
+    0,
+    0b00011110000000,
+    0b00000100000000,
+    0b00001000000000,
+    0b00011110000000,
+    0b10000000000000,
+];
 const IDLE: &[u16] = &[
     0b00000000011111,
     0b00000000000001,

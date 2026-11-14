@@ -1,6 +1,6 @@
 # Tiiny Gauge
 
-A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. It shows the loaded model, NPU, CPU and RAM usage, and estimated busy time over Wi-Fi.
+A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. It shows the loaded model, NPU and SoC utilization, memory usage, and elapsed inference activity over Wi-Fi.
 
 ## Configure Wi-Fi
 
@@ -8,7 +8,9 @@ Copy `.env.example` to `.env` in the repo root. Fill in your 2.4 GHz `WIFI_SSID`
 
 `.env` is ignored by Git. A configured firmware image contains the Wi-Fi password and API key, so keep that image private. The Pico polls the Tiiny over local HTTP every two seconds.
 
-SoC RAM uses the total TiinyOS reports as usable. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
+The `SOC` meter shows the CPU utilization reported by TiinyOS. SoC RAM uses the reported usable total. `--/48G` means the dNPU has a rated capacity of 48 GB and the live memory counter is unavailable.
+
+A descending arrow means a model is loading. Three hopping dots indicate inference, with a timer that starts at the first poll with an active request. Rising Zs indicate idle.
 
 ## Wire the display
 

@@ -41,7 +41,7 @@ async fn main(spawner: Spawner) {
             && !config::WIFI_SSID.is_empty()
             && !config::TIINY_API_KEY.is_empty()
         {
-            state.set(telemetry::Status::WifiLost);
+            state.set(telemetry::Status::WifiConnecting);
             let (stack, control) = wifi::start(
                 spawner,
                 board.PIO0,
