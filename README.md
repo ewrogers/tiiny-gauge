@@ -2,6 +2,22 @@
 
 A 128×64 OLED dashboard for Tiiny Pocket, built with Rust and Embassy on Pico W. It shows the loaded model, NPU and SoC utilization, memory usage, and elapsed inference activity over Wi-Fi.
 
+## OLED gallery
+
+Rendered from the firmware at 2× scale with example telemetry. The loading GIF condenses a model load into a short loop.
+
+| Connecting to Wi-Fi | Model loading |
+| --- | --- |
+| ![Wi-Fi waves expanding above CONNECTING TO WIFI](docs/gallery/connecting.gif) | ![Two-line LOADING MODEL label, live percentage, and descending arrow](docs/gallery/loading.gif) |
+
+| Idle | Inference |
+| --- | --- |
+| ![Loaded model and resource meters with rising idle Zs](docs/gallery/idle.gif) | ![Three hopping dots, elapsed timer, and live resource meters](docs/gallery/inference.gif) |
+
+| Tiiny unavailable | Wi-Fi lost | Setup required |
+| --- | --- | --- |
+| ![TIINY UNAVAILABLE with animated retry dots and connected Wi-Fi](docs/gallery/unavailable.gif) | ![WI-FI LOST with a crossed-out Wi-Fi icon](docs/gallery/wifi-lost.png) | ![SET UP WI-FI with a prompt to see the README](docs/gallery/setup.png) |
+
 ## Configure Wi-Fi
 
 Copy `.env.example` to `.env` in the repo root. Fill in your 2.4 GHz `WIFI_SSID` and `WIFI_PASSWORD`, the Tiiny Pocket’s LAN IPv4 address in `TIINY_IP`, and its TiinyOS API key in `TIINY_API_KEY`. Use one `KEY=value` per line. Rebuild after you change these values.
