@@ -6,7 +6,11 @@ The first firmware displays **Tiiny Gauge** and **OLED ready** so you can verify
 
 ## Wire the display
 
-Use a 3.3 V-compatible SSD1306 I²C OLED at address `0x3C`. Connect by the labels on your display.
+Use a 3.3 V-compatible 128×64 SSD1306 OLED. Connect by the labels on your display.
+
+### I²C OLED
+
+The default firmware uses address `0x3C`.
 
 ![Pico WH breadboard diagram with physical pin numbers, pin names, and four I²C OLED jumpers](docs/breadboard.png)
 
@@ -17,12 +21,39 @@ Use a 3.3 V-compatible SSD1306 I²C OLED at address `0x3C`. Connect by the label
 | GND | GND (pin 8) |
 | VCC | 3V3(OUT) (pin 36) |
 
+### SPI OLED
+
+With the screen facing you and its header at the top, pin 1 is on the right. On this module, `SDA` is the SPI data input (MOSI).
+
+![Pico WH breadboard diagram with seven SPI OLED jumpers and OLED pin 1 at the right](docs/breadboard-spi.png)
+
+| OLED pin | OLED label | Pico W |
+| --- | --- | --- |
+| 1 | GND | GND (pin 23) |
+| 2 | VCC | 3V3(OUT) (pin 36) |
+| 3 | SCK | GP18 (pin 24) |
+| 4 | SDA | GP19 (pin 25) |
+| 5 | RES | GP16 (pin 21) |
+| 6 | DC | GP20 (pin 26) |
+| 7 | CS | GP17 (pin 22) |
+
 ## Build and flash
 
 With Rust installed through rustup, run these commands from the repository root.
 
 ```sh
 cargo build --release --locked
+```
+
+For SPI, use this build command instead.
+
+```sh
+cargo build --release --locked --features oled-spi
+```
+
+Convert the resulting firmware to UF2.
+
+```sh
 cargo install elf2uf2-rs --locked
 elf2uf2-rs target/thumbv6m-none-eabi/release/tiiny-gauge target/tiiny-gauge.uf2
 ```

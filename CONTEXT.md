@@ -1,6 +1,6 @@
 # Project context
 
-Tiiny Gauge is a desk display for Tiiny Pocket. The first target is a Raspberry Pi Pico W (RP2040) and a 128×64 monochrome I²C OLED. The boot screen assumes an SSD1306-compatible module at address `0x3C` and 3.3 V operation.
+Tiiny Gauge is a desk display for Tiiny Pocket. The first target is a Raspberry Pi Pico W (RP2040) with a 3.3 V-compatible 128×64 monochrome SSD1306 OLED. The default build uses I²C at address `0x3C`. The `oled-spi` feature selects write-only SPI0 with reset, data/command, and chip-select GPIOs. Both transports share the display code. See the [README wiring tables](README.md#wire-the-display).
 
 ## Firmware
 
